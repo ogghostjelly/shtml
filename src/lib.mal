@@ -1,0 +1,25 @@
+; range
+; join
+
+(defmacro! defn! (fn* (name params & body)
+    `(def! ~name (fn* ~params ~@body))))
+
+(defn! range
+    [from to]
+    (if (= from to)
+        ()
+        (cons from (range (+ from 1) to))))
+
+(defn! join
+    [ls sep]
+    (if (> (count ls) 1)
+        (str
+            (first ls)
+            sep
+            (join (rest ls) sep))
+        (first ls)))
+
+(defn! sum (ls)
+    (if (> (count ls) 1)
+        (+ (first ls) (sum (rest ls)))
+        (first ls)))

@@ -3,4 +3,11 @@ name = "shtml"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = [
+    "./mal"
+]
+
 [dependencies]
+ogj-mal = { path = "mal" }
+thiserror = "2.0.11"
