@@ -26,10 +26,10 @@ fn find_expr_end(input: &str) -> Option<usize> {
             b')' => {
                 paren_count = paren_count.checked_sub(1)?;
                 if paren_count == 0 {
-                    return Some(index)
+                    return Some(index);
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -118,7 +118,7 @@ pub fn transform(env: &Env, input: &str, mut output: impl Write) -> Result<(), E
         }
 
         if let Some(lisp) = token.lisp {
-            let text = re(&env, &lisp[1..])?;
+            let text = re(env, &lisp[1..])?;
             write!(output, "{text}")?;
         }
     }

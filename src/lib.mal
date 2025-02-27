@@ -1,6 +1,3 @@
-; range
-; join
-
 (defmacro! defn! (fn* (name params & body)
     `(def! ~name (fn* ~params ~@body))))
 

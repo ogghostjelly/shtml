@@ -24,5 +24,5 @@ fn main() {
 
     transform(&env, INP, &mut output).expect("the given data should be valid and not fail");
 
-    println!("{output}")
+    println!("{output}");
 }
