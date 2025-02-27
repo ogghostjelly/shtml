@@ -11,3 +11,4 @@ members = [
 [dependencies]
 ogj-mal = { path = "mal" }
 thiserror = "2.0.11"
+tl = "0.7.8"

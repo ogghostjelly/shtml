@@ -1,6 +1,6 @@
 use std::fmt::{self, Write};
 
-use ogj_mal::{re, Env};
+use ogj_mal::{re, Env, MalVal};
 
 fn find_open(input: &str) -> Option<usize> {
     let mut index = 0;
@@ -43,9 +43,12 @@ fn split_expr(input: &str) -> (&str, &str, &str) {
 
     let (text, rest) = input.split_at(index);
 
-    let (lisp, rest) = match find_expr_end(rest) {
-        Some(index) => rest.split_at(index),
-        None => ("", rest),
+    let (text, lisp, rest) = match find_expr_end(rest) {
+        Some(index) => {
+            let (lisp, rest) = rest.split_at(index);
+            (text, lisp, rest)
+        }
+        None => (input, "", ""),
     };
 
     (text, lisp, rest)
@@ -105,7 +108,6 @@ pub enum Error {
     Mal(#[from] ogj_mal::Error),
 }
 
-// FIXME: loops forever if an opening tag has no corresponding closing tag.
 pub fn transform(env: &Env, input: &str, mut output: impl Write) -> Result<(), Error> {
     for token in Tokenizer::new(input) {
         if let Some(text) = token.text {
@@ -118,8 +120,12 @@ pub fn transform(env: &Env, input: &str, mut output: impl Write) -> Result<(), E
         }
 
         if let Some(lisp) = token.lisp {
-            let text = re(env, &lisp[1..])?;
-            write!(output, "{text}")?;
+            let mut text = lisp[1..].to_string();
+            text.insert(text.len() - 1, '\n');
+            let text = re(env, &text)?;
+            if !matches!(&text, MalVal::List(list) if list.is_empty()) {
+                write!(output, "{text}")?;
+            }
         }
     }
     Ok(())

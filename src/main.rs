@@ -9,6 +9,8 @@ const INP: &str = r#"
 </head>
 
 <body>
+    @(; this is a comment)
+
     @(do
         (def! r (range 0 10))
         (str (join r "+") "=" (sum r)))
