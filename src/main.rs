@@ -1,30 +1,40 @@
 #![warn(clippy::pedantic)]
 
-use ogj_mal::{re, Env};
-use shtml::transform;
+use std::{fs, path::{Path, PathBuf}};
 
-const INP: &str = r#"
-<html>
-<head>
-</head>
+use walkdir::WalkDir;
 
-<body>
-    @(; this is a comment)
+fn main() -> Result<(), anyhow::Error> {
+    let path: PathBuf = PathBuf::from("site");
+    let dist: PathBuf = PathBuf::from("_site");
 
-    @(do
-        (def! r (range 0 10))
-        (str (join r "+") "=" (sum r)))
-</body>
-</html>"#;
+    for entry in walkdir(&path)? {
+        let path = path.join(&entry);
+        let dist = dist.join(&entry);
 
-fn main() {
-    let env = Env::default();
+        let contents = fs::read_to_string(path)?;
+        
+        fs::create_dir_all(&dist.parent().unwrap_or(PathBuf::new().as_path()))?;
+        fs::write(dist, transform(contents))?;
+    }
 
-    re(&env, &format!("(do{}\n)", include_str!("lib.mal"))).expect("`lib.mal` should be valid mal");
+    Ok(())
+}
 
-    let mut output = String::new();
+fn transform(input: String) -> String {
+    shtml::mal::transform(input)
+}
 
-    transform(&env, INP, &mut output).expect("the given data should be valid and not fail");
+fn walkdir(path: impl AsRef<Path>) -> Result<Vec<PathBuf>, anyhow::Error> {
+    let mut vec = vec![];
+    for entry in WalkDir::new(&path) {
+        let entry = entry?;
+        if entry.file_type().is_dir() {
+            continue;
+        }
 
-    println!("{output}");
+        let entry = entry.path().strip_prefix(&path)?;
+        vec.push(entry.to_path_buf());
+    }
+    Ok(vec)
 }
