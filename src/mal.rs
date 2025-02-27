@@ -1,11 +1,15 @@
 use std::fmt::{self, Write};
 
-use ogj_mal::{re, Env, MalVal};
+use ogj_mal::{re, Env};
 
 fn find_open(input: &str) -> Option<usize> {
     let mut index = 0;
     while index < input.len() {
-        if input[index..].starts_with("@(") | input[index..].starts_with("@@(") {
+        if input[index..].starts_with("@(")
+            | input[index..].starts_with("@@(")
+            | input[index..].starts_with("@!(")
+            | input[index..].starts_with("@@!(")
+        {
             return Some(index);
         }
         index += 1;
@@ -108,12 +112,20 @@ pub enum Error {
     Mal(#[from] ogj_mal::Error),
 }
 
-pub fn transform(input: String) -> String {
+/// Transforms text using the mal templating language.
+///
+/// # Panics
+///
+/// Panics if the built-in internal library `lib.mal` has invalid mal code.
+/// This shouldn't happen under normal circumstances and you can safely ignore the possibility of a panic.
+#[must_use]
+pub fn transform(input: &str) -> String {
     let env = Env::default();
-    re(&env, &format!("(do {}\n)", include_str!("lib.mal"))).expect("'lib.mal' should be valid mal");
+    re(&env, &format!("(do {}\n)", include_str!("lib.mal")))
+        .expect("'lib.mal' should be valid mal");
     let mut output = String::new();
-    match transform_inner(&env, &input, &mut output) {
-        Ok(()) => {},
+    match transform_inner(&env, input, &mut output) {
+        Ok(()) => {}
         Err(e) => eprintln!("err: {e}"),
     }
     output
@@ -131,9 +143,17 @@ fn transform_inner(env: &Env, input: &str, mut output: impl Write) -> Result<(),
         }
 
         if let Some(lisp) = token.lisp {
-            let text = &lisp[2..lisp.len()-1];
-            let text = re(env, text)?;
-            if !matches!(&text, MalVal::List(list) if list.is_empty()) {
+            let ignore_return = lisp.starts_with("@!");
+            let offset_index = lisp.find('(').unwrap_or(0);
+            let lisp = {
+                let lisp = &lisp[offset_index + 1..lisp.len() - 1];
+                let mut lisp = String::from(lisp);
+                lisp.push('\n');
+                lisp
+            };
+
+            let text = re(env, &lisp)?;
+            if !ignore_return {
                 write!(output, "{text}")?;
             }
         }

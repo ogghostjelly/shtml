@@ -1,6 +1,9 @@
 #![warn(clippy::pedantic)]
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use walkdir::WalkDir;
 
@@ -13,15 +16,15 @@ fn main() -> Result<(), anyhow::Error> {
         let dist = dist.join(&entry);
 
         let contents = fs::read_to_string(path)?;
-        
-        fs::create_dir_all(&dist.parent().unwrap_or(PathBuf::new().as_path()))?;
-        fs::write(dist, transform(contents))?;
+
+        fs::create_dir_all(dist.parent().unwrap_or(PathBuf::new().as_path()))?;
+        fs::write(dist, transform(&contents))?;
     }
 
     Ok(())
 }
 
-fn transform(input: String) -> String {
+fn transform(input: &str) -> String {
     shtml::mal::transform(input)
 }
 

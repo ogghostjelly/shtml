@@ -1,6 +1,5 @@
-@((do
-    (def! title "HEY")
-    ()))
+<!-- define variables -->
+@!((def! title "HEY"))
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,10 +8,28 @@
     <title>@(title)</title>
 </head>
 <body>
-    @(; this is a comment)
+    <span>
+        @!(; this is a comment)
+    </span>
 
-    @((do
-        (def! r (range 0 10))
-        (str (join r "+") "=" (sum r))))
+    <span>
+        <!-- return value -->
+        @(; 1)
+        <!-- ignore return value -->
+        @!(; 2)
+    </span>
+
+    <span>
+        <!-- count from 0 to 10 and sum it -->
+        @((do
+            (def! r (range 0 10))
+            (str (join r "+") "=" (sum r))))
+    </span>
+    
+    <span>
+        <!-- escape lisp expressions -->
+        @@(escaped returning lisp)
+        @@!(escaped ignoring return lisp)
+    </span>
 </body>
 </html>
