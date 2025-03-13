@@ -5,6 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use ogj_mal::Error;
 use walkdir::WalkDir;
 
 fn main() -> Result<(), anyhow::Error> {
@@ -15,16 +16,25 @@ fn main() -> Result<(), anyhow::Error> {
         let path = path.join(&entry);
         let dist = dist.join(&entry);
 
-        let contents = fs::read_to_string(path)?;
+        let contents = fs::read_to_string(&path)?;
 
         fs::create_dir_all(dist.parent().unwrap_or(PathBuf::new().as_path()))?;
-        fs::write(dist, transform(&contents))?;
+        fs::write(
+            dist,
+            match transform(&contents) {
+                Ok(contents) => contents,
+                Err(e) => {
+                    eprintln!("{e}\n    in '{}'", path.display());
+                    continue;
+                }
+            },
+        )?;
     }
 
     Ok(())
 }
 
-fn transform(input: &str) -> String {
+fn transform(input: &str) -> Result<String, Error> {
     shtml::mal::transform(input)
 }
 

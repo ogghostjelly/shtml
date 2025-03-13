@@ -4,6 +4,8 @@
 (defmacro! script (fn* (& body)
     `(str "<script>" (mal->js (quote ~@body)) "</script>") ))
 
+(defmacro! # (fn* [& body] `(do ~body ())))
+
 (defn! range
     [from to]
     (if (= from to)

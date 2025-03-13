@@ -1,24 +1,23 @@
 <!-- define variables -->
-@!(def! title "HEY")
+@(# def! title "HEY")
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@(str title)</title>
+    <title>@title</title>
 </head>
 <body>
     <span>
-        @!(; this is a comment)
-
-        @(script (alert "this was written in mal but compiled to js!"))
+        <!-- embed 1+2 -->
+        @(+ 1 2)
+        <!-- peform 1+2 but don't embed -->
+        @(# + 1 2)
     </span>
 
     <span>
-        <!-- return value -->
-        @(; 1)
-        <!-- ignore return value -->
-        @!(; 2)
+        @(; this is a comment)
+        @(script (alert "this was written in mal but compiled to js!"))
     </span>
 
     <span>
@@ -30,8 +29,7 @@
     
     <span>
         <!-- escape lisp expressions -->
-        @@(escaped returning lisp)
-        @@!(escaped ignoring return lisp)
+        @@(this will show up as raw text in the output)
     </span>
 </body>
 </html>
