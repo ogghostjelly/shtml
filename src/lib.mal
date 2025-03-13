@@ -1,6 +1,9 @@
 (defmacro! defn! (fn* (name params & body)
     `(def! ~name (fn* ~params ~@body))))
 
+(defmacro! script (fn* (& body)
+    `(mal->js (quote ~@body))))
+
 (defn! range
     [from to]
     (if (= from to)

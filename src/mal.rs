@@ -121,6 +121,7 @@ pub enum Error {
 #[must_use]
 pub fn transform(input: &str) -> String {
     let env = Env::default();
+    env.apply_ns(ogj_mal::js::ns());
     re(&env, &format!("(do {}\n)", include_str!("lib.mal")))
         .expect("'lib.mal' should be valid mal");
     let mut output = String::new();
@@ -146,9 +147,9 @@ fn transform_inner(env: &Env, input: &str, mut output: impl Write) -> Result<(),
             let ignore_return = lisp.starts_with("@!");
             let offset_index = lisp.find('(').unwrap_or(0);
             let lisp = {
-                let lisp = &lisp[offset_index + 1..lisp.len() - 1];
+                let lisp = &lisp[offset_index..lisp.len()];
                 let mut lisp = String::from(lisp);
-                lisp.push('\n');
+                lisp.insert(lisp.len()-1, '\n');
                 lisp
             };
 

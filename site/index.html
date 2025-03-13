@@ -1,15 +1,17 @@
 <!-- define variables -->
-@!((def! title "HEY"))
+@!(def! title "HEY")
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@(title)</title>
+    <title>@(str title)</title>
 </head>
 <body>
     <span>
         @!(; this is a comment)
+
+        @(script (+ 1 2 3))
     </span>
 
     <span>
@@ -21,9 +23,9 @@
 
     <span>
         <!-- count from 0 to 10 and sum it -->
-        @((do
+        @(do
             (def! r (range 0 10))
-            (str (join r "+") "=" (sum r))))
+            (str (join r "+") "=" (sum r)))
     </span>
     
     <span>
