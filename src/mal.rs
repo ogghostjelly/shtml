@@ -1,4 +1,4 @@
-use ogj_mal::{re, reader, Env, Error, MalVal};
+use ogj_mal::{func, re, reader, Env, Error, MalVal};
 use std::fmt::Write;
 
 fn find_closing_paren(lisp: &str) -> Option<usize> {
@@ -62,6 +62,10 @@ pub fn transform_<'i>(env: &Env, input: &'i str, output: &mut String) -> Result<
 pub fn transform(mut input: &str) -> Result<String, Error> {
     let env = Env::default();
     env.apply_ns(ogj_mal::js::ns());
+    env.apply_ns(&[(
+        "shtml-transform",
+        func!(|_, args| { Ok(MalVal::Str(transform(args[0].to_str()?)?)) }),
+    )]);
     setup_lib(&env);
 
     let mut output = String::with_capacity(input.len());
