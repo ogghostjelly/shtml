@@ -2,7 +2,7 @@
     `(def! ~name (fn* ~params ~@body))))
 
 (defmacro! script (fn* (& body)
-    `(str "<script>" (mal->js (quote ~@body)) "</script>") ))
+    `(str "<script>" (mal->js (quasiquote ~@body)) "</script>") ))
 
 (defmacro! # (fn* [& body] `(do ~body ())))
 
