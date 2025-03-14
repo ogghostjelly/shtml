@@ -6,18 +6,8 @@
 
 (defmacro! # (fn* [& body] `(do ~body ())))
 
-; TODO make file paths have the root directory at the project root and relative paths relative to the file its executing in
-
 (defmacro! include (fn* [f arg]
-    (defn! define_args [arg]
-        (if (empty? arg) ()
-        (str
-            "(def!" (first arg) (pr-str (first (rest arg))) ")\n"
-            (define_args (rest (rest arg))))))
-    
-    (def! arg (str "@(do" (define_args arg) ")"))
-
-    (shtml-transform (str arg (slurp f)))))
+    `(shtml-include ~f (quasiquote ~arg))))
 
 (defn! range
     [from to]

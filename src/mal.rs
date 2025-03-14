@@ -1,5 +1,5 @@
-use ogj_mal::{func, re, reader, Env, Error, MalVal};
-use std::fmt::Write;
+use ogj_mal::{env, func, re, reader, types::take_between_vec, Env, Error, MalVal};
+use std::{fmt::Write, fs, path::Path, rc::Rc};
 
 fn find_closing_paren(lisp: &str) -> Option<usize> {
     let mut count = 0;
@@ -59,18 +59,69 @@ pub fn transform_<'i>(env: &Env, input: &'i str, output: &mut String) -> Result<
     Ok(text)
 }
 
-pub fn transform(mut input: &str) -> Result<String, Error> {
-    let env = Env::default();
+pub struct Config<'a> {
+    pub project_dir: &'a Path,
+    pub file_path: &'a Path,
+}
+
+pub fn transform(env: &Env, config: &Config, mut input: &str) -> Result<String, Error> {
+    env.set(
+        "file-path".into(),
+        MalVal::Str(config.file_path.to_string_lossy().into()),
+    );
+    env.set(
+        "project-dir".into(),
+        MalVal::Str(config.project_dir.to_string_lossy().into()),
+    );
+
     env.apply_ns(ogj_mal::js::ns());
     env.apply_ns(&[(
-        "shtml-transform",
-        func!(|_, args| { Ok(MalVal::Str(transform(args[0].to_str()?)?)) }),
+        "shtml-include",
+        func!(|env, args| {
+            let mut args = take_between_vec(args, 1, 2)?;
+
+            let file_path = args.swap_remove(0);
+            let file_path = Path::new(file_path.to_str()?);
+
+            let arg = if !args.is_empty() {
+                Some(Rc::clone(args.swap_remove(0).to_seq()?))
+            } else {
+                None
+            };
+
+            let project_dir = env.get("project-dir")?;
+            let project_dir = Path::new(project_dir.to_str()?);
+
+            let contents = fs::read_to_string(project_dir.join(file_path)).map_err(env::Error::Io)?;
+
+            let env = Env::default();
+
+            if let Some(arg) = arg {
+                for chunk in arg.chunks_exact(2) {
+                    let key = chunk[0].to_sym()?;
+                    let value = &chunk[1];
+                    env.set(key.to_owned(), value.clone());
+                }
+            }
+
+            let ret = transform(
+                &env,
+                &Config {
+                    project_dir,
+                    file_path,
+                },
+                &contents,
+            )?;
+            Ok(MalVal::Str(ret))
+        }),
     )]);
-    setup_lib(&env);
+    setup_lib(env);
+
+    // TODO: ALERT: WARN: IDEA: SSHTML: transform by file that injects the current file variables in
 
     let mut output = String::with_capacity(input.len());
     while !input.is_empty() {
-        input = transform_(&env, input, &mut output)?;
+        input = transform_(env, input, &mut output)?;
     }
     Ok(output)
 }

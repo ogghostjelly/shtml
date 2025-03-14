@@ -6,6 +6,8 @@
     <title>@title</title>
 </head>
 <body>
+    @(include "template.html" [title ~title])
+
     <span>
         <!-- embed 1+2 -->
         @(+ 1 2)

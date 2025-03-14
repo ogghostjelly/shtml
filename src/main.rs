@@ -5,7 +5,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use ogj_mal::Error;
+use ogj_mal::{Env, Error};
+use shtml::mal::Config;
 use walkdir::WalkDir;
 
 fn main() -> Result<(), anyhow::Error> {
@@ -13,7 +14,8 @@ fn main() -> Result<(), anyhow::Error> {
     let dist: PathBuf = PathBuf::from("_site");
 
     for entry in walkdir(&path)? {
-        let path = path.join(&entry);
+        let project_dir = path.as_path();
+        let path = project_dir.join(&entry);
         let dist = dist.join(&entry);
 
         let contents = fs::read_to_string(&path)?;
@@ -21,7 +23,13 @@ fn main() -> Result<(), anyhow::Error> {
         fs::create_dir_all(dist.parent().unwrap_or(PathBuf::new().as_path()))?;
         fs::write(
             dist,
-            match transform(&contents) {
+            match transform(
+                &Config {
+                    project_dir,
+                    file_path: &path,
+                },
+                &contents,
+            ) {
                 Ok(contents) => contents,
                 Err(e) => {
                     eprintln!("{e}\n    in '{}'", path.display());
@@ -34,8 +42,8 @@ fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn transform(input: &str) -> Result<String, Error> {
-    shtml::mal::transform(input)
+fn transform(config: &Config, input: &str) -> Result<String, Error> {
+    shtml::mal::transform(&Env::default(), config, input)
 }
 
 fn walkdir(path: impl AsRef<Path>) -> Result<Vec<PathBuf>, anyhow::Error> {
