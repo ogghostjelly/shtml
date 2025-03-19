@@ -1,10 +1,11 @@
-# SHTML
+# SHTML (Proof of concept)
 
 HTML at Compile-time
 
 A lisp-like HTML templating language built off of [mal](https://github.com/kanaka/mal).
 This is not suited for major production settings.
 If you found a bug or have a suggestion [create an issue](https://github.com/OgGhostJelly/shtml/issues/new) or to submit code [create a pull request](https://github.com/OgGhostJelly/shtml/compare).
+I made this because I was dissatisfied with the state of <abbr title="Static Site Generator">SSG</abbr> templating languages, I may expand this into something more fully featured but for now it remains a proof of concept.
 
 Clone and run it:
 ```bash
@@ -15,7 +16,7 @@ cargo run
 
 # Examples
 
-Adding numbers, comments and embedding:
+Numbers, comments and ignoring:
 ```html
 <main>
     @(; this is a comment)
@@ -50,8 +51,8 @@ Using more complex functions:
 ```
 
 Including files and compiling to JS:
-> [!NOTE]
-> The mal to JS compiler is not yet fully complete or stable.
+> [!WARNING]
+> The mal to JS compiler is not complete or stable.
 ```html
 [index.html]
 <main>
