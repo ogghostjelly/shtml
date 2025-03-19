@@ -1,4 +1,3 @@
-<!-- define variables -->
 @(# def! title "HEY")
 <!DOCTYPE html>
 <html lang="en">
@@ -6,12 +5,14 @@
     <title>@title</title>
 </head>
 <body>
-    @(include "template.html" [title ~title])
+    The current file is @file-path
+
+    @(include "#template.html" [title ~title coolness 9001])
+    @(include "#template.html" [title "What's up?" coolness 5])
 
     <span>
-        <!-- embed 1+2 -->
         @(+ 1 2)
-        <!-- peform 1+2 but don't embed -->
+        <!-- '#' ignores the return value -->
         @(# + 1 2)
     </span>
 
@@ -21,14 +22,12 @@
     </span>
 
     <span>
-        <!-- count from 0 to 10 and sum it -->
         @(do
             (def! r (range 0 10))
             (str (join r "+") "=" (sum r)))
     </span>
     
     <span>
-        <!-- escape lisp expressions -->
         @@(this will show up as raw text in the output)
     </span>
 </body>

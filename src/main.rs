@@ -1,6 +1,7 @@
 #![warn(clippy::pedantic)]
 
 use std::{
+    ffi::OsStr,
     fs,
     path::{Path, PathBuf},
 };
@@ -14,6 +15,16 @@ fn main() -> Result<(), anyhow::Error> {
     let dist: PathBuf = PathBuf::from("_site");
 
     for entry in walkdir(&path)? {
+        match entry.as_path().file_name().and_then(OsStr::to_str) {
+            Some(s) => {
+                if s.starts_with('#') {
+                    eprintln!("ignored: {:?}", entry.as_path());
+                    continue;
+                }
+            }
+            None => eprintln!("warning: failed to get filename of {:?}", entry.as_path()),
+        }
+
         let project_dir = path.as_path();
         let path = project_dir.join(&entry);
         let dist = dist.join(&entry);
@@ -32,12 +43,17 @@ fn main() -> Result<(), anyhow::Error> {
             ) {
                 Ok(contents) => contents,
                 Err(e) => {
+                    eprintln!("failed: {:?}", entry.as_path());
                     eprintln!("{e}\n    in '{}'", path.display());
                     continue;
                 }
             },
         )?;
+
+        eprintln!("built: {:?}", entry.as_path());
     }
+
+    eprintln!("site built to {dist:?}");
 
     Ok(())
 }

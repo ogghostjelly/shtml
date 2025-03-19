@@ -46,8 +46,7 @@ pub fn transform_<'i>(env: &Env, input: &'i str, output: &mut String) -> Result<
     } else {
         let end = lisp
             .find(|ch: char| ch.is_whitespace() || ch == '<')
-            .map(|index| index - 1)
-            .ok_or(reader::Error::UnexpectedEof)?;
+            .map_or(lisp.len() - 1, |index| index - 1);
         lisp.split_at(end + 1)
     };
 
@@ -83,16 +82,17 @@ pub fn transform(env: &Env, config: &Config, mut input: &str) -> Result<String, 
             let file_path = args.swap_remove(0);
             let file_path = Path::new(file_path.to_str()?);
 
-            let arg = if !args.is_empty() {
-                Some(Rc::clone(args.swap_remove(0).to_seq()?))
-            } else {
+            let arg = if args.is_empty() {
                 None
+            } else {
+                Some(Rc::clone(args.swap_remove(0).to_seq()?))
             };
 
             let project_dir = env.get("project-dir")?;
             let project_dir = Path::new(project_dir.to_str()?);
 
-            let contents = fs::read_to_string(project_dir.join(file_path)).map_err(env::Error::Io)?;
+            let contents =
+                fs::read_to_string(project_dir.join(file_path)).map_err(env::Error::Io)?;
 
             let env = Env::default();
 
@@ -116,8 +116,6 @@ pub fn transform(env: &Env, config: &Config, mut input: &str) -> Result<String, 
         }),
     )]);
     setup_lib(env);
-
-    // TODO: ALERT: WARN: IDEA: SSHTML: transform by file that injects the current file variables in
 
     let mut output = String::with_capacity(input.len());
     while !input.is_empty() {
