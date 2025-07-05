@@ -1,5 +1,4 @@
 use colored::Colorize as _;
-use pest::Parser;
 use rustyline::{error::ReadlineError, Editor};
 use shtml::reader;
 
