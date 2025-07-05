@@ -1,0 +1,4 @@
+; You can set global variables and settings here.
+; A directory with a 'config.mal' becomes the root of a project.
+
+(def! site-url "https://ogghostjelly.github.io/")

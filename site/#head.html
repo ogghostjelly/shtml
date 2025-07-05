@@ -1,0 +1,66 @@
+@(import! time)
+
+@; Importing evaluates the file, which prints "Hello from /my_lib.mal!"
+@(import! "/my_lib.mal" as cool_lib) ; Path is relative to 'config.mal'
+
+<title>@title</title>
+
+<!-- Last updated on @(time/now) -->
+
+<!-- The number five: @cool_lib -->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="stylesheet" href="assets/index.css">
+
+<meta name="theme-color" content="@color">
+<meta property="og:title" content="@title">
+<meta property="og:locale" content="en_GB">
+<meta name="description" content="@description">
+<link rel="canonical" content="@site-url">
+<meta property="og:url" content="@site-url">
+<meta property="og:site_name" content="@title">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta property="twitter:title" content="@title">
+<meta name="twitter:site" content="@OgGhostJelly">
+<meta name="keywords" content="OgGhostJelly, OgGhostJelly Hangout, @keywords">
+<meta name="author" content="OgGhostJelly">
+
+<link rel="apple-touch-icon" sizes="180x180" href="assets/favicon/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
+<link rel="icon" href="assets/favicon/favicon.ico">
+<link rel="manifest" href="assets/favicon/site.webmanifest">
+
+<!--
+Import is not special, it is normal macro defined as:
+
+(defmacro! import
+    [path & args]
+
+    ; Get the name of the binding
+    (def! name (cond
+        ; Get the 'as [NAME]' term if it is present
+        (and (= (len args) 2)
+             (= (fst args) "as"))
+            (snd args)
+        
+        ; Get the filename if alias is not specified
+        (= (len args) 0) (filename path)))
+
+        else (error "Bad arguments")
+    
+    (if (string? path)
+        (import-builtin (stringify! path) name)
+        (import-file path name)))
+
+(defn! import-file
+    [path name]
+    ; Read and evaluate the file in a new environment
+    (def! value (eval (new-env) (read-string (slurp path))))
+
+    ; Set name to the evaluated value
+    `(def! ~name ~value))
+-->

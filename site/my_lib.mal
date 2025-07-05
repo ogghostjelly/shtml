@@ -1,0 +1,2 @@
+(print (+ "Hello from " @file "!"))
+5 ; Return 5
