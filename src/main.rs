@@ -1,21 +1,9 @@
 use colored::Colorize as _;
 use rustyline::{error::ReadlineError, Editor};
-use shtml::reader;
+use shtml::{reader, types::MalVal};
 
-fn read(input: String) -> String {
+fn eval(input: MalVal) -> MalVal {
     input
-}
-
-fn eval(input: String) -> String {
-    input
-}
-
-fn print(input: String) -> String {
-    input
-}
-
-fn rep(input: String) -> String {
-    print(eval(read(input)))
 }
 
 fn main() {
@@ -37,13 +25,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = rl.add_history_entry(&input);
 
                 match reader::parse(&input) {
-                    Ok(Some(expr)) => {
-                        println!("{expr:?}\n{expr}")
-                    }
+                    Ok(Some(value)) => println!("> {}", eval(value)),
                     Ok(None) => {}
                     Err(e) => println!("{e}"),
                 };
-                println!("> {}", rep(input));
             }
             Err(ReadlineError::Interrupted) => continue,
             Err(ReadlineError::Eof) => break,
