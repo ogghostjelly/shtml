@@ -109,26 +109,55 @@ mod sform {
 }
 
 pub fn print(data: &mut Env) {
-    data.set_fn("prn", print::prn);
-    data.set_fn("print", print::print);
+    data.set_fn("eprin", fmt::eprin);
+    data.set_fn("eprint", fmt::eprint);
+    data.set_fn("prin", fmt::prin);
+    data.set_fn("print", fmt::print);
 }
 
-mod print {
+mod fmt {
+    use std::fmt;
+
     use crate::{
         env::Error,
         types::{List, MalVal},
     };
 
-    pub fn prn(args: List) -> Result<MalVal, Error> {
+    struct PrettyPrint(MalVal);
+
+    impl fmt::Display for PrettyPrint {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match &self.0 {
+                MalVal::Str(s) => s.fmt(f),
+                _ => self.0.fmt(f),
+            }
+        }
+    }
+
+    pub fn prin(args: List) -> Result<MalVal, Error> {
         for val in args {
-            print!("{val}")
+            print!("{}", PrettyPrint(val));
         }
         Ok(MalVal::List(List::new()))
     }
 
     pub fn print(args: List) -> Result<MalVal, Error> {
         for val in args {
-            println!("{val}")
+            println!("{}", PrettyPrint(val));
+        }
+        Ok(MalVal::List(List::new()))
+    }
+
+    pub fn eprin(args: List) -> Result<MalVal, Error> {
+        for val in args {
+            eprint!("{val}")
+        }
+        Ok(MalVal::List(List::new()))
+    }
+
+    pub fn eprint(args: List) -> Result<MalVal, Error> {
+        for val in args {
+            eprintln!("{val}")
         }
         Ok(MalVal::List(List::new()))
     }
