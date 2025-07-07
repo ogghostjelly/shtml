@@ -1,6 +1,7 @@
 use derive_more::Display;
 
-use crate::types::MalVal;
+use crate::list;
+use crate::types::{List, MalVal};
 
 pub fn parse_file(input: &str) -> Result<Vec<Element>, Error> {
     shtml(Span {
@@ -108,7 +109,7 @@ impl<'i> Parser<'i> for Shorthand {
         let (rest, value) = next_value(rest)?;
         Ok((
             rest,
-            MalVal::List(vec![MalVal::Sym(self.1.to_string()), value]),
+            MalVal::List(list!(MalVal::Sym(self.1.to_string()), value)),
         ))
     }
 }
@@ -125,13 +126,17 @@ fn next_value<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
 }
 
 fn map<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
-    let (rest, mut ls) = ListLike("{", "}").parse(input)?;
-    ls.insert(0, MalVal::Sym("map".into()));
+    let (rest, ls) = ListLike("{", "}").parse(input)?;
+    let mut ls = List::from_vec(ls);
+    ls.push_front(MalVal::Sym("map".into()));
     Ok((rest, MalVal::List(ls)))
 }
 
 fn list<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
-    Map(ListLike("(", ")"), MalVal::List).parse(input)
+    Map(ListLike("(", ")"), |ls: Vec<MalVal>| {
+        MalVal::List(List::from_vec(ls))
+    })
+    .parse(input)
 }
 
 fn vec<'i>(input: Span<'i>) -> TResult<'i, MalVal> {

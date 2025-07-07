@@ -1,10 +1,8 @@
+use std::collections::HashMap;
+
 use colored::Colorize as _;
 use rustyline::{error::ReadlineError, Editor};
-use shtml::{reader, types::MalVal};
-
-fn eval(input: MalVal) -> MalVal {
-    input
-}
+use shtml::{env::Env, ns, reader};
 
 fn main() {
     match run() {
@@ -19,13 +17,22 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("No previous history.");
     }
 
+    let mut env = {
+        let mut data = HashMap::new();
+        ns::std(&mut data);
+        Env::top(data)
+    };
+
     loop {
         match rl.readline("user> ") {
             Ok(input) => {
                 let _ = rl.add_history_entry(&input);
 
                 match reader::parse(&input) {
-                    Ok(Some(value)) => println!("> {}", eval(value)),
+                    Ok(Some(value)) => match env.eval(value) {
+                        Ok(value) => println!("> {value}"),
+                        Err(e) => println!("{e}"),
+                    },
                     Ok(None) => {}
                     Err(e) => println!("{e}"),
                 };

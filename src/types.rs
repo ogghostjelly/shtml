@@ -1,8 +1,10 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, iter, vec};
+
+use crate::env::Error;
 
 #[derive(Debug, Clone)]
 pub enum MalVal {
-    List(Vec<MalVal>),
+    List(List),
     Vector(Vec<MalVal>),
     Map(HashMap<MalKey, MalVal>),
     Sym(String),
@@ -11,6 +13,99 @@ pub enum MalVal {
     Int(i64),
     Float(f64),
     Bool(bool),
+    BuiltinFn(fn(List) -> Result<MalVal, Error>),
+}
+
+#[derive(Debug, Clone)]
+pub struct List(Vec<MalVal>);
+
+impl List {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn pop_front(&mut self) -> Option<MalVal> {
+        self.0.pop()
+    }
+
+    pub fn push_front(&mut self, value: MalVal) {
+        self.0.push(value);
+    }
+}
+
+impl IntoIterator for List {
+    type Item = MalVal;
+
+    type IntoIter = iter::Rev<vec::IntoIter<MalVal>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter().rev()
+    }
+}
+
+#[macro_export]
+macro_rules! list {
+    () => (
+        $crate::types::List::from_inner(std::vec::Vec::new())
+    );
+
+    ([] reversed: $x:expr) => {
+        $crate::types::List::from_inner(<[_]>::into_vec(
+            // Using the intrinsic produces a dramatic improvement in stack usage for
+            // unoptimized programs using this code path to construct large Vecs.
+            std::boxed::Box::new($x)
+        ))
+    };
+
+    ($($x:expr),* $(,)?) => {
+        list!([$($x),*] reversed: [])
+    };
+
+    ([$head:expr $(, $tail:expr)*] reversed: [$($reversed:expr),*]) => {
+        list!([$($tail),*] reversed: [$head $(, $reversed)*])
+    };
+}
+
+impl List {
+    pub fn from_inner(inner: Vec<MalVal>) -> Self {
+        Self(inner)
+    }
+
+    pub fn into_inner(self) -> Vec<MalVal> {
+        self.0
+    }
+
+    pub fn from_vec(mut vec: Vec<MalVal>) -> Self {
+        vec.reverse();
+        Self(vec)
+    }
+
+    pub fn into_vec(mut self) -> Vec<MalVal> {
+        self.0.reverse();
+        self.0
+    }
+
+    pub fn append(&mut self, other: &mut List) {
+        other.0.append(&mut self.0);
+        std::mem::swap(self, other);
+    }
+}
+
+impl MalVal {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            MalVal::List(_) => "list",
+            MalVal::Vector(_) => "vector",
+            MalVal::Map(_) => "map",
+            MalVal::Sym(_) => "symbol",
+            MalVal::Str(_) => "string",
+            MalVal::Kwd(_) => "keyword",
+            MalVal::Int(_) => "int",
+            MalVal::Float(_) => "float",
+            MalVal::Bool(_) => "bool",
+            MalVal::BuiltinFn(_) => "function",
+        }
+    }
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -25,12 +120,12 @@ pub enum MalKey {
 impl MalKey {
     fn from_value(value: MalVal) -> Option<MalKey> {
         match value {
-            MalVal::List(_) | MalVal::Vector(_) | MalVal::Map(_) | MalVal::Float(_) => None,
             MalVal::Sym(value) => Some(MalKey::Sym(value)),
             MalVal::Str(value) => Some(MalKey::Str(value)),
             MalVal::Kwd(value) => Some(MalKey::Kwd(value)),
             MalVal::Int(value) => Some(MalKey::Int(value)),
             MalVal::Bool(value) => Some(MalKey::Bool(value)),
+            _ => None,
         }
     }
 
@@ -48,7 +143,7 @@ impl MalKey {
 impl fmt::Display for MalVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MalVal::List(vals) => join_vals(f, "(", ")", vals.into_iter()),
+            MalVal::List(List(vals)) => join_vals(f, "(", ")", vals.into_iter()),
             MalVal::Vector(vals) => join_vals(f, "(", ")", vals.into_iter()),
             MalVal::Map(map) => join_vals(
                 f,
@@ -65,8 +160,9 @@ impl fmt::Display for MalVal {
             MalVal::Str(value) => write!(f, "\"{}\"", escape(value)),
             MalVal::Kwd(value) => write!(f, ":{value}"),
             MalVal::Int(value) => write!(f, "{value}"),
-            MalVal::Float(value) => write!(f, "{value}."),
+            MalVal::Float(value) => write!(f, "{value:?}"),
             MalVal::Bool(value) => write!(f, "{value}"),
+            MalVal::BuiltinFn(_) => write!(f, "<function>"),
         }
     }
 }
