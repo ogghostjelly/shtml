@@ -21,8 +21,12 @@ impl Env {
         Self::new(HashMap::new(), Some(Box::new(env.clone())))
     }
 
-    pub fn set(&mut self, key: String, value: MalVal) {
-        self.data.insert(key, value);
+    pub fn set(&mut self, key: impl Into<String>, value: MalVal) {
+        self.data.insert(key.into(), value);
+    }
+
+    pub fn set_fn(&mut self, key: impl Into<String>, value: fn(List) -> Result<MalVal, Error>) {
+        self.set(key, MalVal::BuiltinFn(value))
     }
 
     pub fn get(&self, key: String) -> Result<&MalVal, Error> {

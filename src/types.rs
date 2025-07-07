@@ -23,6 +23,16 @@ pub enum MalVal {
     },
 }
 
+impl MalVal {
+    pub fn is_true(&self) -> bool {
+        match self {
+            MalVal::List(list) => !list.is_empty(),
+            MalVal::Bool(value) => *value,
+            _ => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct List(Vec<MalVal>);
 

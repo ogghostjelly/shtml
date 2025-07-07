@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use crate::{
-    env::Error,
+    env::{Env, Error},
     types::{List, MalVal},
 };
 
-pub fn std(data: &mut HashMap<String, MalVal>) {
+pub fn std(data: &mut Env) {
     sform(data);
     math(data);
     ds(data);
@@ -13,12 +11,12 @@ pub fn std(data: &mut HashMap<String, MalVal>) {
     print(data);
 }
 
-pub fn sform(data: &mut HashMap<String, MalVal>) {
-    data.insert("let*".to_string(), MalVal::BuiltinMacro(sform::r#let));
-    data.insert("def!".to_string(), MalVal::BuiltinMacro(sform::def));
-    data.insert("do".to_string(), MalVal::BuiltinMacro(sform::r#do));
-    data.insert("if".to_string(), MalVal::BuiltinMacro(sform::r#if));
-    data.insert("fn*".to_string(), MalVal::BuiltinMacro(sform::r#fn));
+pub fn sform(data: &mut Env) {
+    data.set("let*", MalVal::BuiltinMacro(sform::r#let));
+    data.set("def!", MalVal::BuiltinMacro(sform::def));
+    data.set("do", MalVal::BuiltinMacro(sform::r#do));
+    data.set("if", MalVal::BuiltinMacro(sform::r#if));
+    data.set("fn*", MalVal::BuiltinMacro(sform::r#fn));
 }
 
 mod sform {
@@ -72,13 +70,7 @@ mod sform {
     pub fn r#if(env: &mut Env, args: List) -> Result<MalVal, Error> {
         let [cond, truthy, falsey] = take_exact(args)?;
 
-        let cond = match env.eval(cond)? {
-            MalVal::List(list) => !list.is_empty(),
-            MalVal::Bool(value) => value,
-            _ => true,
-        };
-
-        if cond {
+        if env.eval(cond)?.is_true() {
             env.eval(truthy)
         } else {
             env.eval(falsey)
@@ -116,9 +108,9 @@ mod sform {
     }
 }
 
-pub fn print(data: &mut HashMap<String, MalVal>) {
-    data.insert("prn".to_string(), MalVal::BuiltinFn(print::prn));
-    data.insert("print".to_string(), MalVal::BuiltinFn(print::print));
+pub fn print(data: &mut Env) {
+    data.set_fn("prn", print::prn);
+    data.set_fn("print", print::print);
 }
 
 mod print {
@@ -142,15 +134,17 @@ mod print {
     }
 }
 
-pub fn cmp(data: &mut HashMap<String, MalVal>) {
-    data.insert("=".to_string(), MalVal::BuiltinFn(cmp::eq));
-    data.insert("<".to_string(), MalVal::BuiltinFn(cmp::lt));
-    data.insert("<=".to_string(), MalVal::BuiltinFn(cmp::lte));
-    data.insert(">".to_string(), MalVal::BuiltinFn(cmp::gt));
-    data.insert(">=".to_string(), MalVal::BuiltinFn(cmp::gte));
+pub fn cmp(data: &mut Env) {
+    data.set_fn("=", cmp::eq);
+    data.set_fn("<", cmp::lt);
+    data.set_fn("<=", cmp::lte);
+    data.set_fn(">", cmp::gt);
+    data.set_fn(">=", cmp::gte);
 
-    data.insert("list?".to_string(), MalVal::BuiltinFn(cmp::is_list));
-    data.insert("empty?".to_string(), MalVal::BuiltinFn(cmp::is_empty));
+    data.set_fn("not", cmp::not);
+
+    data.set_fn("list?", cmp::is_list);
+    data.set_fn("empty?", cmp::is_empty);
 }
 
 mod cmp {
@@ -161,10 +155,15 @@ mod cmp {
         types::{List, MalVal},
     };
 
-    use super::{all, all_reduce};
+    use super::{all, all_reduce, take_exact};
 
     pub fn eq(args: List) -> Result<MalVal, Error> {
         all_reduce(args, eq2)
+    }
+
+    pub fn not(args: List) -> Result<MalVal, Error> {
+        let [value] = take_exact(args)?;
+        Ok(MalVal::Bool(!value.is_true()))
     }
 
     pub fn eq2(fst: &MalVal, snd: &MalVal) -> Result<bool, Error> {
@@ -276,12 +275,12 @@ mod cmp {
     }
 }
 
-pub fn ds(data: &mut HashMap<String, MalVal>) {
-    data.insert("map".to_string(), MalVal::BuiltinFn(ds::map));
-    data.insert("list".to_string(), MalVal::BuiltinFn(ds::list));
-    data.insert("vec".to_string(), MalVal::BuiltinFn(ds::vec));
+pub fn ds(data: &mut Env) {
+    data.set_fn("map", ds::map);
+    data.set_fn("list", ds::list);
+    data.set_fn("vec", ds::vec);
 
-    data.insert("count".to_string(), MalVal::BuiltinFn(ds::count));
+    data.set_fn("count", ds::count);
 }
 
 mod ds {
@@ -334,11 +333,11 @@ mod ds {
     }
 }
 
-pub fn math(data: &mut HashMap<String, MalVal>) {
-    data.insert("+".to_string(), MalVal::BuiltinFn(math::add));
-    data.insert("-".to_string(), MalVal::BuiltinFn(math::sub));
-    data.insert("*".to_string(), MalVal::BuiltinFn(math::mul));
-    data.insert("/".to_string(), MalVal::BuiltinFn(math::div));
+pub fn math(data: &mut Env) {
+    data.set_fn("+", math::add);
+    data.set_fn("-", math::sub);
+    data.set_fn("*", math::mul);
+    data.set_fn("/", math::div);
 }
 
 mod math {
@@ -514,8 +513,8 @@ fn take_atleast<const N: usize>(mut list: List) -> Result<([MalVal; N], List), E
     Ok((array, rest))
 }
 
-fn take_exact<const N: usize>(list: List) -> Result<[MalVal; N], Error> {
-    match list.into_array::<N>() {
+fn take_exact<const N: usize>(args: List) -> Result<[MalVal; N], Error> {
+    match args.into_array::<N>() {
         Ok(arr) => Ok(arr),
         Err(list) => Err(Error::ArityMismatch(N, list.len())),
     }

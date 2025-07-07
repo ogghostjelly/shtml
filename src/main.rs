@@ -18,9 +18,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut env = {
-        let mut data = HashMap::new();
+        let mut data = Env::new(HashMap::new(), None);
         ns::std(&mut data);
-        Env::new(data, None)
+        data
     };
 
     loop {
