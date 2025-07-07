@@ -115,31 +115,110 @@ pub fn cmp(data: &mut HashMap<String, MalVal>) {
 }
 
 mod cmp {
+    use std::cmp::Ordering;
+
     use crate::{
         env::Error,
         types::{List, MalVal},
     };
 
-    use super::{all, all_reduce, op_error, reduce};
+    use super::{all, all_reduce};
 
     pub fn eq(args: List) -> Result<MalVal, Error> {
-        todo!()
+        all_reduce(args, eq2)
+    }
+
+    pub fn eq2(fst: &MalVal, snd: &MalVal) -> Result<bool, Error> {
+        Ok(match (fst, snd) {
+            (MalVal::List(fst), MalVal::List(snd)) => eq_iter(fst.iter(), snd.iter())?,
+            (MalVal::Vector(fst), MalVal::Vector(snd)) => eq_iter(fst.iter(), snd.iter())?,
+            (MalVal::List(fst), MalVal::Vector(snd)) => eq_iter(fst.iter(), snd.iter())?,
+            (MalVal::Vector(fst), MalVal::List(snd)) => eq_iter(fst.iter(), snd.iter())?,
+
+            (MalVal::Map(fst), MalVal::Map(snd)) => {
+                if fst.len() != snd.len() {
+                    return Ok(false);
+                }
+
+                for (key, fst) in fst {
+                    let Some(snd) = snd.get(key) else {
+                        return Ok(false);
+                    };
+
+                    if !eq2(fst, snd)? {
+                        return Ok(false);
+                    }
+                }
+
+                true
+            }
+
+            (MalVal::Sym(fst), MalVal::Sym(snd)) => fst == snd,
+            (MalVal::Str(fst), MalVal::Str(snd)) => fst == snd,
+            (MalVal::Kwd(fst), MalVal::Kwd(snd)) => fst == snd,
+
+            (MalVal::Int(fst), MalVal::Int(snd)) => fst == snd,
+            (MalVal::Float(fst), MalVal::Float(snd)) => fst == snd,
+            (MalVal::Float(float), MalVal::Int(int)) | (MalVal::Int(int), MalVal::Float(float)) => {
+                *float == (*int as f64)
+            }
+
+            (MalVal::Bool(fst), MalVal::Bool(snd)) => fst == snd,
+            _ => false,
+        })
+    }
+
+    fn eq_iter<'a, T, U>(fst: T, snd: U) -> Result<bool, Error>
+    where
+        T: ExactSizeIterator + Iterator<Item = &'a MalVal>,
+        U: ExactSizeIterator + Iterator<Item = &'a MalVal>,
+    {
+        if fst.len() != snd.len() {
+            return Ok(false);
+        }
+
+        for (fst, snd) in fst.zip(snd) {
+            if !eq2(fst, snd)? {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
     }
 
     pub fn lt(args: List) -> Result<MalVal, Error> {
-        todo!()
+        cmp_num(args, |ord| matches!(ord, Ordering::Less))
     }
 
     pub fn lte(args: List) -> Result<MalVal, Error> {
-        todo!()
+        cmp_num(args, |ord| matches!(ord, Ordering::Less | Ordering::Equal))
     }
 
     pub fn gt(args: List) -> Result<MalVal, Error> {
-        todo!()
+        cmp_num(args, |ord| matches!(ord, Ordering::Greater))
     }
 
     pub fn gte(args: List) -> Result<MalVal, Error> {
-        todo!()
+        cmp_num(args, |ord| {
+            matches!(ord, Ordering::Greater | Ordering::Equal)
+        })
+    }
+
+    fn cmp_num(args: List, cond: impl Fn(Ordering) -> bool) -> Result<MalVal, Error> {
+        all_reduce(args, |fst, snd| {
+            let ord = match (fst, snd) {
+                (MalVal::Int(fst), MalVal::Int(snd)) => fst.partial_cmp(snd),
+                (MalVal::Float(fst), MalVal::Float(snd)) => fst.partial_cmp(snd),
+                (MalVal::Float(float), MalVal::Int(int))
+                | (MalVal::Int(int), MalVal::Float(float)) => float.partial_cmp(&(*int as f64)),
+                _ => None,
+            };
+
+            match ord {
+                Some(ord) => Ok(cond(ord)),
+                None => Ok(false),
+            }
+        })
     }
 
     pub fn is_list(args: List) -> Result<MalVal, Error> {
@@ -332,7 +411,7 @@ fn all(args: List, cond: impl Fn(MalVal) -> Result<bool, Error>) -> Result<MalVa
 
 fn all_reduce(
     args: List,
-    cond: impl Fn(MalVal, &MalVal) -> Result<bool, Error>,
+    cond: impl Fn(&MalVal, &MalVal) -> Result<bool, Error>,
 ) -> Result<MalVal, Error> {
     let mut iter = args.into_iter();
     let Some(mut last) = iter.next() else {
@@ -340,7 +419,7 @@ fn all_reduce(
     };
 
     for value in iter {
-        if !cond(last, &value)? {
+        if !cond(&last, &value)? {
             return Ok(MalVal::Bool(false));
         }
 
