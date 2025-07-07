@@ -18,14 +18,14 @@ pub fn parse(input: &str) -> Result<Option<MalVal>, Error> {
         col: 0,
     })?;
 
-    if rest.data.len() != 0 {
+    if !rest.data.is_empty() {
         return Err(rest.err(ErrorKind::UnexpectedEof));
     }
 
     Ok(value)
 }
 
-fn shtml<'i>(input: Span<'i>) -> Result<Vec<Element>, Error<'i>> {
+fn shtml(input: Span<'_>) -> Result<Vec<Element>, Error<'_>> {
     let (mut input, mut elems) = (input, vec![]);
 
     loop {
@@ -54,7 +54,7 @@ pub enum Element {
     Value(MalVal),
 }
 
-fn text<'i>(input: Span<'i>) -> (Span<'i>, Span<'i>) {
+fn text(input: Span<'_>) -> (Span<'_>, Span<'_>) {
     let mut chars = input.data.char_indices().peekable();
     let mut index = input.data.len();
 
@@ -71,7 +71,7 @@ fn text<'i>(input: Span<'i>) -> (Span<'i>, Span<'i>) {
     input.split_offset_unchecked(index)
 }
 
-fn value<'i>(input: Span<'i>) -> TResult<'i, Option<MalVal>> {
+fn value(input: Span<'_>) -> TResult<'_, Option<MalVal>> {
     let bool = Map(bool, |v: bool| Some(MalVal::Bool(v)));
     let num = Map(num, Some);
     let string = Map(string, |s: &str| Some(MalVal::Str(unescape_str(s))));
@@ -91,7 +91,7 @@ fn value<'i>(input: Span<'i>) -> TResult<'i, Option<MalVal>> {
     value.parse(input)
 }
 
-fn shorthand<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
+fn shorthand(input: Span<'_>) -> TResult<'_, MalVal> {
     Or(
         Or(Shorthand("'", "quote"), Shorthand("`", "quasiquote")),
         Or(Shorthand("~@", "splice_unquote"), Shorthand("~", "unquote")),
@@ -114,7 +114,7 @@ impl<'i> Parser<'i> for Shorthand {
     }
 }
 
-fn next_value<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
+fn next_value(input: Span<'_>) -> TResult<'_, MalVal> {
     let (mut rest, mut val) = value(input)?;
 
     loop {
@@ -125,21 +125,21 @@ fn next_value<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
     }
 }
 
-fn map<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
+fn map(input: Span<'_>) -> TResult<'_, MalVal> {
     let (rest, ls) = ListLike("{", "}").parse(input)?;
     let mut ls = List::from_vec(ls);
     ls.push_front(MalVal::Sym("map".into()));
     Ok((rest, MalVal::List(ls)))
 }
 
-fn list<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
+fn list(input: Span<'_>) -> TResult<'_, MalVal> {
     Map(ListLike("(", ")"), |ls: Vec<MalVal>| {
         MalVal::List(List::from_vec(ls))
     })
     .parse(input)
 }
 
-fn vec<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
+fn vec(input: Span<'_>) -> TResult<'_, MalVal> {
     Map(ListLike("[", "]"), MalVal::Vector).parse(input)
 }
 
@@ -156,7 +156,7 @@ impl<'i> Parser<'i> for ListLike {
     }
 }
 
-fn elems<'i>(input: Span<'i>) -> TResult<'i, Vec<MalVal>> {
+fn elems(input: Span<'_>) -> TResult<'_, Vec<MalVal>> {
     let mut elems = vec![];
     let mut rest = input;
 
@@ -168,20 +168,20 @@ fn elems<'i>(input: Span<'i>) -> TResult<'i, Vec<MalVal>> {
     Ok((rest, elems))
 }
 
-fn ident<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
+fn ident(input: Span<'_>) -> TResult<'_, MalVal> {
     let keyword = Map(keyword, |s: &str| MalVal::Kwd(s.to_string()));
     let symbol = Map(symbol, |s: &str| MalVal::Sym(s.to_string()));
     Or(keyword, symbol).parse(input)
 }
 
-fn symbol<'i>(input: Span<'i>) -> TResult<'i, &'i str> {
+fn symbol(input: Span<'_>) -> TResult<'_, &str> {
     let Some((rest, symbol)) = input.take_while1(is_valid_char) else {
         return Err(input.err(ErrorKind::Symbol));
     };
     Ok((rest, symbol.data))
 }
 
-fn keyword<'i>(input: Span<'i>) -> TResult<'i, &'i str> {
+fn keyword(input: Span<'_>) -> TResult<'_, &str> {
     let (rest, _) = Tag(":").parse(input.clone())?;
     let Some((rest, keyword)) = rest.take_while1(is_valid_char) else {
         return Err(input.err(ErrorKind::Keyword));
@@ -193,7 +193,7 @@ fn is_valid_char(input: char) -> bool {
     !input.is_whitespace() && !['\"', '\'', '(', ')', '[', ']', '{', '}'].contains(&input)
 }
 
-fn string<'i>(input: Span<'i>) -> TResult<'i, &'i str> {
+fn string(input: Span<'_>) -> TResult<'_, &str> {
     let (rest, _) = Tag("\"").parse(input)?;
 
     let mut is_escaped = false;
@@ -220,23 +220,23 @@ fn unescape_str(s: &str) -> String {
         .replace(r#"\\"#, "\\")
 }
 
-fn comment<'i>(input: Span<'i>) -> TResult<'i, &'i str> {
+fn comment(input: Span<'_>) -> TResult<'_, &str> {
     let (rest, _) = Tag(";").parse(input)?;
     let (rest, comment) = rest.take_while(|ch| ch != '\n');
     Ok((rest, comment.data))
 }
 
-fn bool<'i>(input: Span<'i>) -> TResult<'i, bool> {
+fn bool(input: Span<'_>) -> TResult<'_, bool> {
     Or(Map(Tag("true"), |_| true), Map(Tag("false"), |_| false)).parse(input)
 }
 
-fn num<'i>(input: Span<'i>) -> TResult<'i, MalVal> {
+fn num(input: Span<'_>) -> TResult<'_, MalVal> {
     let float = Map(float, MalVal::Float);
     let int = Map(int, MalVal::Int);
     Or(float, int).parse(input)
 }
 
-fn float<'i>(input: Span<'i>) -> TResult<'i, f64> {
+fn float(input: Span<'_>) -> TResult<'_, f64> {
     let (rest, int) = take_int(input.clone())?;
     let (rest, dot) = Tag(".").parse(rest)?;
     let digs = match digits(rest) {
@@ -253,7 +253,7 @@ fn float<'i>(input: Span<'i>) -> TResult<'i, f64> {
     }
 }
 
-fn int<'i>(input: Span<'i>) -> TResult<'i, i64> {
+fn int(input: Span<'_>) -> TResult<'_, i64> {
     let (rest, int) = take_int(input)?;
 
     match int.data.replace('_', "").parse() {
@@ -262,7 +262,7 @@ fn int<'i>(input: Span<'i>) -> TResult<'i, i64> {
     }
 }
 
-fn take_int<'i>(input: Span<'i>) -> SResult<'i> {
+fn take_int(input: Span<'_>) -> SResult<'_> {
     let (rest, slen) = match Or(Tag("+"), Tag("-")).parse(input.clone()) {
         Ok((rest, sign)) => (rest, sign.data.len()),
         Err(_) => (input.clone(), 0),
@@ -275,7 +275,7 @@ fn take_int<'i>(input: Span<'i>) -> SResult<'i> {
     Ok((rest, int))
 }
 
-fn digits<'i>(input: Span<'i>) -> SResult<'i> {
+fn digits(input: Span<'_>) -> SResult<'_> {
     let Some((rest, ch)) = input.take_one() else {
         return Err(input.err(ErrorKind::Digit));
     };
@@ -384,7 +384,7 @@ impl<'i> Span<'i> {
 
     fn take_while1(&self, f: impl FnMut(char) -> bool) -> Option<(Self, Self)> {
         let (rest, first) = self.take_while(f);
-        if first.data.len() == 0 {
+        if first.data.is_empty() {
             return None;
         }
         Some((rest, first))
@@ -446,12 +446,11 @@ impl<'i, F: Fn(Span<'i>) -> TResult<'i, O>, O> Parser<'i> for F {
 
 #[derive(thiserror::Error, Debug)]
 #[error(transparent)]
-
 pub struct Error<'i> {
     inner: ErrorInner<'i>,
 }
 
-impl<'i> Error<'i> {
+impl Error<'_> {
     pub fn or(self, o: Self) -> Self {
         Error {
             inner: ErrorInner::Or(Box::new((self.inner, o.inner))),

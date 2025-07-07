@@ -19,6 +19,12 @@ pub enum MalVal {
 #[derive(Debug, Clone)]
 pub struct List(Vec<MalVal>);
 
+impl Default for List {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl List {
     pub fn new() -> Self {
         Self(Vec::new())
@@ -143,18 +149,17 @@ impl MalKey {
 impl fmt::Display for MalVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MalVal::List(List(vals)) => join_vals(f, "(", ")", vals.into_iter()),
-            MalVal::Vector(vals) => join_vals(f, "(", ")", vals.into_iter()),
+            MalVal::List(List(vals)) => join_vals(f, "(", ")", vals.iter()),
+            MalVal::Vector(vals) => join_vals(f, "(", ")", vals.iter()),
             MalVal::Map(map) => join_vals(
                 f,
                 "{",
                 "}",
-                map.into_iter()
+                map.iter()
                     .map(|(key, value)| (key.clone().into_value(), value))
                     .collect::<Vec<_>>()
                     .iter()
-                    .map(|(x, y)| [x, y])
-                    .flatten(),
+                    .flat_map(|(x, y)| [x, y]),
             ),
             MalVal::Sym(value) => write!(f, "{value}"),
             MalVal::Str(value) => write!(f, "\"{}\"", escape(value)),

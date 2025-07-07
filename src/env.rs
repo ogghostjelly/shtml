@@ -63,7 +63,7 @@ impl Env {
             | MalVal::Kwd(_)
             | MalVal::Int(_)
             | MalVal::Float(_)
-            | MalVal::Bool(_) => return Err(Error::CannotApply(op.type_name())),
+            | MalVal::Bool(_) => Err(Error::CannotApply(op.type_name())),
         }
     }
 }
