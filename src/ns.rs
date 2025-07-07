@@ -4,6 +4,57 @@ use crate::types::MalVal;
 
 pub fn std(data: &mut HashMap<String, MalVal>) {
     math(data);
+    ds(data);
+}
+
+pub fn ds(data: &mut HashMap<String, MalVal>) {
+    data.insert("map".to_string(), MalVal::BuiltinFn(ds::map));
+    data.insert("list".to_string(), MalVal::BuiltinFn(ds::list));
+    data.insert("vec".to_string(), MalVal::BuiltinFn(ds::vec));
+}
+
+mod ds {
+    use std::collections::HashMap;
+
+    use crate::{
+        env::Error,
+        types::{List, MalKey, MalVal},
+    };
+
+    pub fn map(args: List) -> Result<MalVal, Error> {
+        let mut args = args.into_iter();
+        let mut map = HashMap::with_capacity(args.len() / 2);
+
+        while let Some(key) = args.next() {
+            let Some(value) = args.next() else {
+                return Err(Error::Error(
+                    "'map' expects an even number of arguments".to_string(),
+                ));
+            };
+
+            let key = match MalKey::from_value(key) {
+                Ok(key) => key,
+                Err(key) => {
+                    return Err(Error::Error(format!(
+                        "'{}' cannot be a map key",
+                        key.type_name()
+                    )))
+                }
+            };
+
+            map.insert(key, value);
+        }
+
+        Ok(MalVal::Map(map))
+    }
+
+    pub fn list(args: List) -> Result<MalVal, Error> {
+        Ok(MalVal::List(args))
+    }
+
+    pub fn vec(args: List) -> Result<MalVal, Error> {
+        Ok(MalVal::Vector(args.into_vec()))
+    }
 }
 
 pub fn math(data: &mut HashMap<String, MalVal>) {

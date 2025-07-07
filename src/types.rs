@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, iter, vec};
+use std::{collections::HashMap, fmt, iter, slice, vec};
 
 use crate::env::Error;
 
@@ -28,6 +28,10 @@ impl Default for List {
 impl List {
     pub fn new() -> Self {
         Self(Vec::new())
+    }
+
+    pub fn iter(&self) -> iter::Rev<slice::Iter<MalVal>> {
+        self.0.iter().rev()
     }
 
     pub fn pop_front(&mut self) -> Option<MalVal> {
@@ -124,14 +128,14 @@ pub enum MalKey {
 }
 
 impl MalKey {
-    fn from_value(value: MalVal) -> Option<MalKey> {
+    pub fn from_value(value: MalVal) -> Result<MalKey, MalVal> {
         match value {
-            MalVal::Sym(value) => Some(MalKey::Sym(value)),
-            MalVal::Str(value) => Some(MalKey::Str(value)),
-            MalVal::Kwd(value) => Some(MalKey::Kwd(value)),
-            MalVal::Int(value) => Some(MalKey::Int(value)),
-            MalVal::Bool(value) => Some(MalKey::Bool(value)),
-            _ => None,
+            MalVal::Sym(value) => Ok(MalKey::Sym(value)),
+            MalVal::Str(value) => Ok(MalKey::Str(value)),
+            MalVal::Kwd(value) => Ok(MalKey::Kwd(value)),
+            MalVal::Int(value) => Ok(MalKey::Int(value)),
+            MalVal::Bool(value) => Ok(MalKey::Bool(value)),
+            _ => Err(value),
         }
     }
 
@@ -149,8 +153,8 @@ impl MalKey {
 impl fmt::Display for MalVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MalVal::List(List(vals)) => join_vals(f, "(", ")", vals.iter()),
-            MalVal::Vector(vals) => join_vals(f, "(", ")", vals.iter()),
+            MalVal::List(vals) => join_vals(f, "(", ")", vals.iter()),
+            MalVal::Vector(vals) => join_vals(f, "[", "]", vals.iter()),
             MalVal::Map(map) => join_vals(
                 f,
                 "{",
