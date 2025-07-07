@@ -17,7 +17,8 @@ pub enum MalVal {
     BuiltinMacro(fn(&mut Env, List) -> Result<MalVal, Error>),
     Fn {
         outer: Env,
-        bindings: Vec<String>,
+        binds: Vec<String>,
+        bind_rest: Option<Option<String>>,
         body: (Box<MalVal>, List),
     },
 }

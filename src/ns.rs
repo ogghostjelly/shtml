@@ -88,17 +88,29 @@ mod sform {
     pub fn r#fn(env: &mut Env, args: List) -> Result<MalVal, Error> {
         let ([bindings, first], rest) = take_atleast(args)?;
 
-        let bindings: Vec<String> = {
-            let mut ret = vec![];
-            for value in to_iter(bindings)? {
-                ret.push(to_sym(value)?)
+        let mut binds: Vec<String> = vec![];
+        let mut bind_rest: Option<Option<String>> = None;
+
+        for value in to_iter(bindings)? {
+            let sym = to_sym(value)?;
+
+            match &bind_rest {
+                Some(None) => bind_rest = Some(Some(sym)),
+                Some(Some(_)) => return Err(Error::BindsAfterRest),
+                None => {
+                    if sym == "&" {
+                        bind_rest = Some(None);
+                    } else {
+                        binds.push(sym);
+                    }
+                }
             }
-            ret
-        };
+        }
 
         Ok(MalVal::Fn {
             outer: env.clone(),
-            bindings,
+            binds,
+            bind_rest,
             body: (Box::new(first), rest),
         })
     }

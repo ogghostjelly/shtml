@@ -77,25 +77,45 @@ impl Env {
             MalVal::BuiltinFn(f) => f(List::from_inner(self.eval_in(vals.into_inner())?)),
             MalVal::Fn {
                 outer,
-                bindings,
+                binds,
+                bind_rest,
                 body,
             } => {
-                if bindings.len() != vals.len() {
-                    return Err(Error::ArityMismatch(bindings.len(), vals.len()));
-                }
+                let bind_rest = match &bind_rest {
+                    Some(bind) => bind.as_ref(),
+                    None => {
+                        if binds.len() != vals.len() {
+                            return Err(Error::ArityMismatch(binds.len(), vals.len()));
+                        }
+                        None
+                    }
+                };
 
                 let mut env = Env::inner(&outer);
-                let bindings = bindings.into_iter();
-                let vals = vals.into_iter();
+                let bindings = binds.into_iter();
+                let mut vals = vals.into_iter();
 
-                for (key, value) in bindings.zip(vals) {
+                for (key, value) in bindings.zip(&mut vals) {
                     let value = self.eval(value)?;
                     env.set(key, value)
                 }
 
+                {
+                    let mut ls = vec![];
+
+                    for value in vals {
+                        let value = self.eval(value)?;
+                        ls.push(value)
+                    }
+
+                    if let Some(key) = bind_rest {
+                        env.set(key.clone(), MalVal::List(List::from_vec(ls)))
+                    }
+                }
+
                 let mut last = env.eval(*body.0)?;
                 for value in body.1.into_iter() {
-                    last = self.eval(value)?;
+                    last = env.eval(value)?;
                 }
                 Ok(last)
             }
@@ -137,4 +157,6 @@ pub enum Error {
     ArityMismatch(usize, usize),
     #[error("expected at least {0} arguments but got {1}")]
     AtleastArityMismatch(usize, usize),
+    #[error("cannot have more binds after variadic '&'")]
+    BindsAfterRest,
 }
