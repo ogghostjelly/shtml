@@ -9,6 +9,7 @@ pub fn std(data: &mut HashMap<String, MalVal>) {
     sform(data);
     math(data);
     ds(data);
+    cmp(data);
 }
 
 pub fn sform(data: &mut HashMap<String, MalVal>) {
@@ -102,10 +103,67 @@ mod sform {
     }
 }
 
+pub fn cmp(data: &mut HashMap<String, MalVal>) {
+    data.insert("=".to_string(), MalVal::BuiltinFn(cmp::eq));
+    data.insert("<".to_string(), MalVal::BuiltinFn(cmp::lt));
+    data.insert("<=".to_string(), MalVal::BuiltinFn(cmp::lte));
+    data.insert(">".to_string(), MalVal::BuiltinFn(cmp::gt));
+    data.insert(">=".to_string(), MalVal::BuiltinFn(cmp::gte));
+
+    data.insert("list?".to_string(), MalVal::BuiltinFn(cmp::is_list));
+    data.insert("empty?".to_string(), MalVal::BuiltinFn(cmp::is_empty));
+}
+
+mod cmp {
+    use crate::{
+        env::Error,
+        types::{List, MalVal},
+    };
+
+    use super::{all, all_reduce, op_error, reduce};
+
+    pub fn eq(args: List) -> Result<MalVal, Error> {
+        todo!()
+    }
+
+    pub fn lt(args: List) -> Result<MalVal, Error> {
+        todo!()
+    }
+
+    pub fn lte(args: List) -> Result<MalVal, Error> {
+        todo!()
+    }
+
+    pub fn gt(args: List) -> Result<MalVal, Error> {
+        todo!()
+    }
+
+    pub fn gte(args: List) -> Result<MalVal, Error> {
+        todo!()
+    }
+
+    pub fn is_list(args: List) -> Result<MalVal, Error> {
+        all(args, |value| Ok(matches!(value, MalVal::List(_))))
+    }
+
+    pub fn is_empty(args: List) -> Result<MalVal, Error> {
+        all(args, |value| {
+            Ok(match value {
+                MalVal::List(list) => list.is_empty(),
+                MalVal::Vector(vec) => vec.is_empty(),
+                MalVal::Map(map) => map.is_empty(),
+                _ => return Err(Error::InvalidOperation1("empty?", value.type_name())),
+            })
+        })
+    }
+}
+
 pub fn ds(data: &mut HashMap<String, MalVal>) {
     data.insert("map".to_string(), MalVal::BuiltinFn(ds::map));
     data.insert("list".to_string(), MalVal::BuiltinFn(ds::list));
     data.insert("vec".to_string(), MalVal::BuiltinFn(ds::vec));
+
+    data.insert("count".to_string(), MalVal::BuiltinFn(ds::count));
 }
 
 mod ds {
@@ -115,6 +173,8 @@ mod ds {
         env::Error,
         types::{List, MalKey, MalVal},
     };
+
+    use super::take_exact;
 
     pub fn map(args: List) -> Result<MalVal, Error> {
         let mut args = args.into_iter();
@@ -143,6 +203,17 @@ mod ds {
     pub fn vec(args: List) -> Result<MalVal, Error> {
         Ok(MalVal::Vector(args.into_vec()))
     }
+
+    pub fn count(args: List) -> Result<MalVal, Error> {
+        let [value] = take_exact(args)?;
+
+        Ok(MalVal::Int(match value {
+            MalVal::List(list) => list.len(),
+            MalVal::Vector(vec) => vec.len(),
+            MalVal::Map(map) => map.len(),
+            _ => return Err(Error::InvalidOperation1("count", value.type_name())),
+        } as i64))
+    }
 }
 
 pub fn math(data: &mut HashMap<String, MalVal>) {
@@ -157,6 +228,8 @@ mod math {
         env::Error,
         types::{List, MalVal},
     };
+
+    use super::{op_error, reduce};
 
     pub fn add(args: List) -> Result<MalVal, Error> {
         reduce(args, add2)
@@ -186,7 +259,7 @@ mod math {
                 a.append(&mut b.into_vec());
                 Ok(MalVal::Vector(a))
             }
-            vals => Err(error("+", vals)),
+            vals => Err(op_error("+", vals)),
         }
     }
 
@@ -197,7 +270,7 @@ mod math {
             }
             (MalVal::Int(a), MalVal::Int(b)) => Ok(MalVal::Int(a - b)),
             (MalVal::Float(a), MalVal::Float(b)) => Ok(MalVal::Float(a - b)),
-            vals => Err(error("-", vals)),
+            vals => Err(op_error("-", vals)),
         })
     }
 
@@ -208,7 +281,7 @@ mod math {
             }
             (MalVal::Int(a), MalVal::Int(b)) => Ok(MalVal::Int(a * b)),
             (MalVal::Float(a), MalVal::Float(b)) => Ok(MalVal::Float(a * b)),
-            vals => Err(error("*", vals)),
+            vals => Err(op_error("*", vals)),
         })
     }
 
@@ -219,32 +292,16 @@ mod math {
             }
             (MalVal::Int(a), MalVal::Int(b)) => Ok(MalVal::Int(a / b)),
             (MalVal::Float(a), MalVal::Float(b)) => Ok(MalVal::Float(a / b)),
-            vals => Err(error("/", vals)),
+            vals => Err(op_error("/", vals)),
         })
     }
+}
 
-    fn reduce(
-        args: List,
-        join: impl Fn(MalVal, MalVal) -> Result<MalVal, Error>,
-    ) -> Result<MalVal, Error> {
-        let mut iter = args.into_iter();
-        let Some(mut accum) = iter.next() else {
-            return Ok(MalVal::List(List::new()));
-        };
-
-        for value in iter {
-            accum = join(accum, value)?;
-        }
-
-        Ok(accum)
-    }
-
-    fn error(op: &'static str, (fst, snd): (MalVal, MalVal)) -> Error {
-        Error::InvalidOperation {
-            op,
-            fst: fst.type_name(),
-            snd: snd.type_name(),
-        }
+fn op_error(op: &'static str, (fst, snd): (MalVal, MalVal)) -> Error {
+    Error::InvalidOperation {
+        op,
+        fst: fst.type_name(),
+        snd: snd.type_name(),
     }
 }
 
@@ -262,6 +319,51 @@ fn to_iter(val: MalVal) -> Result<impl Iterator<Item = MalVal>, Error> {
         MalVal::Vector(vec) => Ok(ListLikeIter::Vector(vec.into_iter())),
         _ => Err(Error::UnexpectedType("list-like", val.type_name())),
     }
+}
+
+fn all(args: List, cond: impl Fn(MalVal) -> Result<bool, Error>) -> Result<MalVal, Error> {
+    for value in args {
+        if !cond(value)? {
+            return Ok(MalVal::Bool(false));
+        }
+    }
+    Ok(MalVal::Bool(true))
+}
+
+fn all_reduce(
+    args: List,
+    cond: impl Fn(MalVal, &MalVal) -> Result<bool, Error>,
+) -> Result<MalVal, Error> {
+    let mut iter = args.into_iter();
+    let Some(mut last) = iter.next() else {
+        return Ok(MalVal::List(List::new()));
+    };
+
+    for value in iter {
+        if !cond(last, &value)? {
+            return Ok(MalVal::Bool(false));
+        }
+
+        last = value;
+    }
+
+    Ok(MalVal::Bool(true))
+}
+
+fn reduce(
+    args: List,
+    join: impl Fn(MalVal, MalVal) -> Result<MalVal, Error>,
+) -> Result<MalVal, Error> {
+    let mut iter = args.into_iter();
+    let Some(mut accum) = iter.next() else {
+        return Ok(MalVal::List(List::new()));
+    };
+
+    for value in iter {
+        accum = join(accum, value)?;
+    }
+
+    Ok(accum)
 }
 
 pub enum ListLikeIter {

@@ -125,6 +125,8 @@ pub enum Error {
         fst: &'static str,
         snd: &'static str,
     },
+    #[error("cannot use '{0}' on '{1}'")]
+    InvalidOperation1(&'static str, &'static str),
     #[error("expected type '{0}' but got '{1}'")]
     UnexpectedType(&'static str, &'static str),
     #[error("'{0}' expects an even number of arguments")]
