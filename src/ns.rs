@@ -1,10 +1,66 @@
 use std::collections::HashMap;
 
-use crate::types::MalVal;
+use crate::{
+    env::Error,
+    types::{List, MalVal},
+};
 
 pub fn std(data: &mut HashMap<String, MalVal>) {
+    sform(data);
     math(data);
     ds(data);
+}
+
+pub fn sform(data: &mut HashMap<String, MalVal>) {
+    data.insert("let*".to_string(), MalVal::BuiltinMacro(sform::r#let));
+    data.insert("def!".to_string(), MalVal::BuiltinMacro(sform::def));
+}
+
+mod sform {
+    use std::collections::HashMap;
+
+    use crate::{
+        env::{Env, Error},
+        ns::to_iter,
+        types::{List, MalVal},
+    };
+
+    use super::take_exact;
+
+    pub fn r#let(env: &mut Env, args: List) -> Result<MalVal, Error> {
+        let [bindings, body] = take_exact::<2>(args)?;
+        let mut bindings = to_iter(bindings)?;
+
+        let mut env = Env::new(HashMap::new(), Some(Box::new(env.clone())));
+
+        while let Some(key) = bindings.next() {
+            let Some(value) = bindings.next() else {
+                return Err(Error::UnevenArguments("let*"));
+            };
+
+            let MalVal::Sym(key) = key else {
+                return Err(Error::UnexpectedType(MalVal::SYM, key.type_name()));
+            };
+
+            let value = env.eval(value)?;
+            env.set(key, value);
+        }
+
+        env.eval(body)
+    }
+
+    pub fn def(env: &mut Env, args: List) -> Result<MalVal, Error> {
+        let [key, value] = take_exact::<2>(args)?;
+
+        let MalVal::Sym(key) = key else {
+            return Err(Error::UnexpectedType(MalVal::SYM, key.type_name()));
+        };
+
+        let value = env.eval(value)?;
+        env.set(key, value.clone());
+
+        Ok(value)
+    }
 }
 
 pub fn ds(data: &mut HashMap<String, MalVal>) {
@@ -27,19 +83,12 @@ mod ds {
 
         while let Some(key) = args.next() {
             let Some(value) = args.next() else {
-                return Err(Error::Error(
-                    "'map' expects an even number of arguments".to_string(),
-                ));
+                return Err(Error::UnevenArguments("map"));
             };
 
             let key = match MalKey::from_value(key) {
                 Ok(key) => key,
-                Err(key) => {
-                    return Err(Error::Error(format!(
-                        "'{}' cannot be a map key",
-                        key.type_name()
-                    )))
-                }
+                Err(key) => return Err(Error::InvalidMapKey(key.type_name())),
             };
 
             map.insert(key, value);
@@ -152,10 +201,41 @@ mod math {
     }
 
     fn error(op: &'static str, (fst, snd): (MalVal, MalVal)) -> Error {
-        Error::Error(format!(
-            "cannot use '{op}' on '{}' and '{}'",
-            fst.type_name(),
-            snd.type_name()
-        ))
+        Error::InvalidOperation {
+            op,
+            fst: fst.type_name(),
+            snd: snd.type_name(),
+        }
+    }
+}
+
+fn to_iter(val: MalVal) -> Result<impl Iterator<Item = MalVal>, Error> {
+    match val {
+        MalVal::List(list) => Ok(ListLikeIter::List(list.into_iter())),
+        MalVal::Vector(vec) => Ok(ListLikeIter::Vector(vec.into_iter())),
+        _ => Err(Error::UnexpectedType("list-like", val.type_name())),
+    }
+}
+
+pub enum ListLikeIter {
+    List(<List as IntoIterator>::IntoIter),
+    Vector(<Vec<MalVal> as IntoIterator>::IntoIter),
+}
+
+impl Iterator for ListLikeIter {
+    type Item = MalVal;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ListLikeIter::List(list) => list.next(),
+            ListLikeIter::Vector(vec) => vec.next(),
+        }
+    }
+}
+
+fn take_exact<const N: usize>(list: List) -> Result<[MalVal; N], Error> {
+    match list.into_array::<N>() {
+        Ok(arr) => Ok(arr),
+        Err(list) => Err(Error::ArityMismatch(N, list.len())),
     }
 }

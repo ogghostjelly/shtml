@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, iter, slice, vec};
 
-use crate::env::Error;
+use crate::env::{Env, Error};
 
 #[derive(Debug, Clone)]
 pub enum MalVal {
@@ -14,6 +14,7 @@ pub enum MalVal {
     Float(f64),
     Bool(bool),
     BuiltinFn(fn(List) -> Result<MalVal, Error>),
+    BuiltinMacro(fn(&mut Env, List) -> Result<MalVal, Error>),
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +29,25 @@ impl Default for List {
 impl List {
     pub fn new() -> Self {
         Self(Vec::new())
+    }
+
+    /*pub fn split_off(&mut self, at: usize) -> Self {
+        Self(self.0.split_off(self.len() - at))
+    }*/
+
+    pub fn into_array<const N: usize>(self) -> Result<[MalVal; N], List> {
+        self.0.try_into().map_err(List).map(|mut arr: [MalVal; N]| {
+            arr.reverse();
+            arr
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
     pub fn iter(&self) -> iter::Rev<slice::Iter<MalVal>> {
@@ -102,18 +122,31 @@ impl List {
 }
 
 impl MalVal {
+    pub const LIST: &str = "list";
+    pub const VECTOR: &str = "vector";
+    pub const MAP: &str = "map";
+    pub const SYM: &str = "symbol";
+    pub const STR: &str = "string";
+    pub const KWD: &str = "keyword";
+    pub const INT: &str = "int";
+    pub const FLOAT: &str = "float";
+    pub const BOOL: &str = "bool";
+    pub const FN: &str = "function";
+    pub const MACRO: &str = "macro";
+
     pub fn type_name(&self) -> &'static str {
         match self {
-            MalVal::List(_) => "list",
-            MalVal::Vector(_) => "vector",
-            MalVal::Map(_) => "map",
-            MalVal::Sym(_) => "symbol",
-            MalVal::Str(_) => "string",
-            MalVal::Kwd(_) => "keyword",
-            MalVal::Int(_) => "int",
-            MalVal::Float(_) => "float",
-            MalVal::Bool(_) => "bool",
-            MalVal::BuiltinFn(_) => "function",
+            MalVal::List(_) => Self::LIST,
+            MalVal::Vector(_) => Self::VECTOR,
+            MalVal::Map(_) => Self::MAP,
+            MalVal::Sym(_) => Self::SYM,
+            MalVal::Str(_) => Self::STR,
+            MalVal::Kwd(_) => Self::KWD,
+            MalVal::Int(_) => Self::INT,
+            MalVal::Float(_) => Self::FLOAT,
+            MalVal::Bool(_) => Self::BOOL,
+            MalVal::BuiltinFn(_) => Self::FN,
+            MalVal::BuiltinMacro(_) => Self::MACRO,
         }
     }
 }
@@ -171,7 +204,8 @@ impl fmt::Display for MalVal {
             MalVal::Int(value) => write!(f, "{value}"),
             MalVal::Float(value) => write!(f, "{value:?}"),
             MalVal::Bool(value) => write!(f, "{value}"),
-            MalVal::BuiltinFn(_) => write!(f, "<function>"),
+            MalVal::BuiltinFn(_) => write!(f, "#<function>"),
+            MalVal::BuiltinMacro(_) => write!(f, "#<macro>"),
         }
     }
 }

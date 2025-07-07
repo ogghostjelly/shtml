@@ -20,7 +20,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut env = {
         let mut data = HashMap::new();
         ns::std(&mut data);
-        Env::top(data)
+        Env::new(data, None)
     };
 
     loop {
