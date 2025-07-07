@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::types::{List, MalVal};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Env {
     data: HashMap<String, MalVal>,
     outer: Option<Box<Env>>,
@@ -11,6 +11,14 @@ pub struct Env {
 impl Env {
     pub fn new(data: HashMap<String, MalVal>, outer: Option<Box<Env>>) -> Self {
         Self { data, outer }
+    }
+
+    pub fn top(data: HashMap<String, MalVal>) -> Self {
+        Self::new(data, None)
+    }
+
+    pub fn inner(env: &Env) -> Self {
+        Self::new(HashMap::new(), Some(Box::new(env.clone())))
     }
 
     pub fn set(&mut self, key: String, value: MalVal) {
@@ -41,6 +49,7 @@ impl Env {
             MalVal::Sym(sym) => self.get(sym).cloned(),
             MalVal::Str(_)
             | MalVal::BuiltinFn(_)
+            | MalVal::Fn { .. }
             | MalVal::BuiltinMacro(_)
             | MalVal::Kwd(_)
             | MalVal::Int(_)
@@ -66,6 +75,30 @@ impl Env {
 
         match op {
             MalVal::BuiltinFn(f) => f(List::from_inner(self.eval_in(vals.into_inner())?)),
+            MalVal::Fn {
+                outer,
+                bindings,
+                body,
+            } => {
+                if bindings.len() != vals.len() {
+                    return Err(Error::ArityMismatch(bindings.len(), vals.len()));
+                }
+
+                let mut env = Env::inner(&outer);
+                let bindings = bindings.into_iter();
+                let vals = vals.into_iter();
+
+                for (key, value) in bindings.zip(vals) {
+                    let value = self.eval(value)?;
+                    env.set(key, value)
+                }
+
+                let mut last = env.eval(*body.0)?;
+                for value in body.1.into_iter() {
+                    last = self.eval(value)?;
+                }
+                Ok(last)
+            }
             MalVal::BuiltinMacro(f) => f(self, vals),
             MalVal::List(_)
             | MalVal::Vector(_)
@@ -100,4 +133,6 @@ pub enum Error {
     InvalidMapKey(&'static str),
     #[error("expected {0} arguments but got {1}")]
     ArityMismatch(usize, usize),
+    #[error("expected at least {0} arguments but got {1}")]
+    AtleastArityMismatch(usize, usize),
 }

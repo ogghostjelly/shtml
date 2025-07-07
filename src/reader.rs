@@ -158,7 +158,7 @@ impl<'i> Parser<'i> for ListLike {
 
 fn elems(input: Span<'_>) -> TResult<'_, Vec<MalVal>> {
     let mut elems = vec![];
-    let mut rest = input;
+    let (mut rest, _) = input.take_while(|ch| ch.is_whitespace());
 
     while let Ok((r, elem)) = next_value(rest.clone()) {
         elems.push(elem);

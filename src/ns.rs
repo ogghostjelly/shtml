@@ -14,33 +14,32 @@ pub fn std(data: &mut HashMap<String, MalVal>) {
 pub fn sform(data: &mut HashMap<String, MalVal>) {
     data.insert("let*".to_string(), MalVal::BuiltinMacro(sform::r#let));
     data.insert("def!".to_string(), MalVal::BuiltinMacro(sform::def));
+    data.insert("do".to_string(), MalVal::BuiltinMacro(sform::r#do));
+    data.insert("if".to_string(), MalVal::BuiltinMacro(sform::r#if));
+    data.insert("fn*".to_string(), MalVal::BuiltinMacro(sform::r#fn));
 }
 
 mod sform {
-    use std::collections::HashMap;
-
     use crate::{
         env::{Env, Error},
-        ns::to_iter,
+        ns::{take_atleast, to_iter},
         types::{List, MalVal},
     };
 
-    use super::take_exact;
+    use super::{take_exact, to_sym};
 
     pub fn r#let(env: &mut Env, args: List) -> Result<MalVal, Error> {
-        let [bindings, body] = take_exact::<2>(args)?;
+        let [bindings, body] = take_exact(args)?;
         let mut bindings = to_iter(bindings)?;
 
-        let mut env = Env::new(HashMap::new(), Some(Box::new(env.clone())));
+        let mut env = Env::inner(env);
 
         while let Some(key) = bindings.next() {
             let Some(value) = bindings.next() else {
                 return Err(Error::UnevenArguments("let*"));
             };
 
-            let MalVal::Sym(key) = key else {
-                return Err(Error::UnexpectedType(MalVal::SYM, key.type_name()));
-            };
+            let key = to_sym(key)?;
 
             let value = env.eval(value)?;
             env.set(key, value);
@@ -50,16 +49,56 @@ mod sform {
     }
 
     pub fn def(env: &mut Env, args: List) -> Result<MalVal, Error> {
-        let [key, value] = take_exact::<2>(args)?;
+        let [key, value] = take_exact(args)?;
 
-        let MalVal::Sym(key) = key else {
-            return Err(Error::UnexpectedType(MalVal::SYM, key.type_name()));
-        };
+        let key = to_sym(key)?;
 
         let value = env.eval(value)?;
         env.set(key, value.clone());
 
         Ok(value)
+    }
+
+    pub fn r#do(env: &mut Env, args: List) -> Result<MalVal, Error> {
+        let mut last = None;
+        for value in args.into_iter() {
+            last = Some(env.eval(value)?);
+        }
+        Ok(last.unwrap_or_else(|| MalVal::List(List::new())))
+    }
+
+    pub fn r#if(env: &mut Env, args: List) -> Result<MalVal, Error> {
+        let [cond, truthy, falsey] = take_exact(args)?;
+
+        let cond = match env.eval(cond)? {
+            MalVal::List(list) => !list.is_empty(),
+            MalVal::Bool(value) => value,
+            _ => true,
+        };
+
+        if cond {
+            env.eval(truthy)
+        } else {
+            env.eval(falsey)
+        }
+    }
+
+    pub fn r#fn(env: &mut Env, args: List) -> Result<MalVal, Error> {
+        let ([bindings, first], rest) = take_atleast(args)?;
+
+        let bindings: Vec<String> = {
+            let mut ret = vec![];
+            for value in to_iter(bindings)? {
+                ret.push(to_sym(value)?)
+            }
+            ret
+        };
+
+        Ok(MalVal::Fn {
+            outer: env.clone(),
+            bindings,
+            body: (Box::new(first), rest),
+        })
     }
 }
 
@@ -209,6 +248,14 @@ mod math {
     }
 }
 
+fn to_sym(value: MalVal) -> Result<String, Error> {
+    let MalVal::Sym(key) = value else {
+        return Err(Error::UnexpectedType(MalVal::SYM, value.type_name()));
+    };
+
+    Ok(key)
+}
+
 fn to_iter(val: MalVal) -> Result<impl Iterator<Item = MalVal>, Error> {
     match val {
         MalVal::List(list) => Ok(ListLikeIter::List(list.into_iter())),
@@ -231,6 +278,20 @@ impl Iterator for ListLikeIter {
             ListLikeIter::Vector(vec) => vec.next(),
         }
     }
+}
+
+fn take_atleast<const N: usize>(mut list: List) -> Result<([MalVal; N], List), Error> {
+    if list.len() < N {
+        return Err(Error::AtleastArityMismatch(N, list.len()));
+    }
+
+    let rest = list.split_off(N);
+    let array = list
+        .into_vec()
+        .try_into()
+        .expect("split list should be the size of N");
+
+    Ok((array, rest))
 }
 
 fn take_exact<const N: usize>(list: List) -> Result<[MalVal; N], Error> {

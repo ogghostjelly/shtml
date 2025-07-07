@@ -15,6 +15,11 @@ pub enum MalVal {
     Bool(bool),
     BuiltinFn(fn(List) -> Result<MalVal, Error>),
     BuiltinMacro(fn(&mut Env, List) -> Result<MalVal, Error>),
+    Fn {
+        outer: Env,
+        bindings: Vec<String>,
+        body: (Box<MalVal>, List),
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -31,9 +36,11 @@ impl List {
         Self(Vec::new())
     }
 
-    /*pub fn split_off(&mut self, at: usize) -> Self {
-        Self(self.0.split_off(self.len() - at))
-    }*/
+    pub fn split_off(&mut self, at: usize) -> Self {
+        let mut o = self.0.split_off(self.len() - at);
+        std::mem::swap(&mut self.0, &mut o);
+        Self(o)
+    }
 
     pub fn into_array<const N: usize>(self) -> Result<[MalVal; N], List> {
         self.0.try_into().map_err(List).map(|mut arr: [MalVal; N]| {
@@ -145,7 +152,7 @@ impl MalVal {
             MalVal::Int(_) => Self::INT,
             MalVal::Float(_) => Self::FLOAT,
             MalVal::Bool(_) => Self::BOOL,
-            MalVal::BuiltinFn(_) => Self::FN,
+            MalVal::BuiltinFn(_) | MalVal::Fn { .. } => Self::FN,
             MalVal::BuiltinMacro(_) => Self::MACRO,
         }
     }
@@ -186,7 +193,7 @@ impl MalKey {
 impl fmt::Display for MalVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MalVal::List(vals) => join_vals(f, "(", ")", vals.iter()),
+            MalVal::List(vals) => join_vals(f, "'(", ")", vals.iter()),
             MalVal::Vector(vals) => join_vals(f, "[", "]", vals.iter()),
             MalVal::Map(map) => join_vals(
                 f,
@@ -204,7 +211,7 @@ impl fmt::Display for MalVal {
             MalVal::Int(value) => write!(f, "{value}"),
             MalVal::Float(value) => write!(f, "{value:?}"),
             MalVal::Bool(value) => write!(f, "{value}"),
-            MalVal::BuiltinFn(_) => write!(f, "#<function>"),
+            MalVal::BuiltinFn(_) | MalVal::Fn { .. } => write!(f, "#<function>"),
             MalVal::BuiltinMacro(_) => write!(f, "#<macro>"),
         }
     }
