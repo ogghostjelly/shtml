@@ -10,6 +10,7 @@ pub fn std(data: &mut HashMap<String, MalVal>) {
     math(data);
     ds(data);
     cmp(data);
+    print(data);
 }
 
 pub fn sform(data: &mut HashMap<String, MalVal>) {
@@ -100,6 +101,32 @@ mod sform {
             bindings,
             body: (Box::new(first), rest),
         })
+    }
+}
+
+pub fn print(data: &mut HashMap<String, MalVal>) {
+    data.insert("prn".to_string(), MalVal::BuiltinFn(print::prn));
+    data.insert("print".to_string(), MalVal::BuiltinFn(print::print));
+}
+
+mod print {
+    use crate::{
+        env::Error,
+        types::{List, MalVal},
+    };
+
+    pub fn prn(args: List) -> Result<MalVal, Error> {
+        for val in args {
+            print!("{val}")
+        }
+        Ok(MalVal::List(List::new()))
+    }
+
+    pub fn print(args: List) -> Result<MalVal, Error> {
+        for val in args {
+            println!("{val}")
+        }
+        Ok(MalVal::List(List::new()))
     }
 }
 
