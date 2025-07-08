@@ -12,14 +12,14 @@ pub fn std(data: &mut Env) {
 }
 
 pub fn sform(data: &mut Env) {
-    data.set("let*", MalVal::Special(sform::r#let));
-    data.set("def!", MalVal::Special(sform::def));
-    data.set("do", MalVal::Special(sform::r#do));
-    data.set("if", MalVal::Special(sform::r#if));
-    data.set("fn*", MalVal::Special(sform::r#fn));
+    data.set_special("let*", sform::r#let);
+    data.set_special("def!", sform::def);
+    data.set_special("do", sform::r#do);
+    data.set_special("if", sform::r#if);
+    data.set_special("fn*", sform::r#fn);
 
-    data.set("quote", MalVal::Special(sform::quote));
-    data.set("quasiquote", MalVal::Special(sform::quasiquote));
+    data.set_special("quote", sform::quote);
+    data.set_special("quasiquote", sform::quasiquote);
 }
 
 mod sform {
@@ -159,10 +159,13 @@ mod sform {
 
     pub fn def(env: &mut Env, args: List) -> TcoRet {
         let [key, value] = take_exact(args)?;
-
         let key = to_sym(key)?;
+        let mut value = env.eval(value)?;
 
-        let value = env.eval(value)?;
+        if let MalVal::Fn { name, .. } = &mut value {
+            *name = Some(key.clone());
+        }
+
         env.set(key, value.clone());
 
         Ok(TcoVal::Val(value))
@@ -218,6 +221,7 @@ mod sform {
         }
 
         Ok(TcoVal::Val(MalVal::Fn {
+            name: None,
             outer: env.clone(),
             binds,
             bind_rest,

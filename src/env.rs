@@ -26,7 +26,13 @@ impl Env {
     }
 
     pub fn set_fn(&mut self, key: impl Into<String>, value: fn(List) -> MalRet) {
-        self.set(key, MalVal::BuiltinFn(value))
+        let key = key.into();
+        self.set(key.clone(), MalVal::BuiltinFn(key, value))
+    }
+
+    pub fn set_special(&mut self, key: impl Into<String>, value: fn(&mut Env, List) -> TcoRet) {
+        let key = key.into();
+        self.set(key.clone(), MalVal::Special(key, value));
     }
 
     pub fn get(&self, key: String) -> Result<&MalVal, Error> {
@@ -64,9 +70,9 @@ impl Env {
                 }
                 MalVal::Sym(sym) => return self.get(sym).cloned(),
                 MalVal::Str(_)
-                | MalVal::BuiltinFn(_)
+                | MalVal::BuiltinFn(_, _)
                 | MalVal::Fn { .. }
-                | MalVal::Special(_)
+                | MalVal::Special(_, _)
                 | MalVal::Kwd(_)
                 | MalVal::Int(_)
                 | MalVal::Float(_)
@@ -98,10 +104,11 @@ impl Env {
         let op = self.eval(op)?;
 
         match op {
-            MalVal::BuiltinFn(f) => {
+            MalVal::BuiltinFn(_, f) => {
                 f(List::from_rev(self.eval_in(vals.into_rev())?)).map(TcoVal::Val)
             }
             MalVal::Fn {
+                name: _,
                 outer,
                 binds,
                 bind_rest,
@@ -148,7 +155,7 @@ impl Env {
 
                 Ok(TcoVal::Unevaluated(last))
             }
-            MalVal::Special(f) => f(self, vals),
+            MalVal::Special(_, f) => f(self, vals),
             MalVal::List(_)
             | MalVal::Vector(_)
             | MalVal::Map(_)

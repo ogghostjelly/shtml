@@ -13,9 +13,10 @@ pub enum MalVal {
     Int(i64),
     Float(f64),
     Bool(bool),
-    BuiltinFn(fn(List) -> MalRet),
-    Special(fn(&mut Env, List) -> TcoRet),
+    BuiltinFn(String, fn(List) -> MalRet),
+    Special(String, fn(&mut Env, List) -> TcoRet),
     Fn {
+        name: Option<String>,
         outer: Env,
         binds: Vec<String>,
         bind_rest: Option<Option<String>>,
@@ -171,8 +172,8 @@ impl MalVal {
             MalVal::Int(_) => Self::INT,
             MalVal::Float(_) => Self::FLOAT,
             MalVal::Bool(_) => Self::BOOL,
-            MalVal::BuiltinFn(_) | MalVal::Fn { .. } => Self::FN,
-            MalVal::Special(_) => Self::MACRO,
+            MalVal::BuiltinFn(_, _) | MalVal::Fn { .. } => Self::FN,
+            MalVal::Special(_, _) => Self::MACRO,
         }
     }
 }

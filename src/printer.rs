@@ -40,8 +40,12 @@ fn display(value: &MalVal, f: &mut fmt::Formatter<'_>, mut quote: bool) -> fmt::
         MalVal::Int(value) => write!(f, "{value}"),
         MalVal::Float(value) => write!(f, "{value:?}"),
         MalVal::Bool(value) => write!(f, "{value}"),
-        MalVal::BuiltinFn(_) | MalVal::Fn { .. } => write!(f, "#<function>"),
-        MalVal::Special(_) => write!(f, "#<macro>"),
+        MalVal::BuiltinFn(name, _)
+        | MalVal::Fn {
+            name: Some(name), ..
+        } => write!(f, "#<function:{name}>"),
+        MalVal::Fn { name: None, .. } => write!(f, "#<function>"),
+        MalVal::Special(name, _) => write!(f, "#<macro:{name}>"),
     }
 }
 
