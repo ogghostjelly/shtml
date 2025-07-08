@@ -1,6 +1,6 @@
 use crate::{
     env::{Env, Error},
-    types::{List, MalVal},
+    types::{List, MalRet, MalVal},
 };
 
 pub fn std(data: &mut Env) {
@@ -12,23 +12,23 @@ pub fn std(data: &mut Env) {
 }
 
 pub fn sform(data: &mut Env) {
-    data.set("let*", MalVal::BuiltinMacro(sform::r#let));
-    data.set("def!", MalVal::BuiltinMacro(sform::def));
-    data.set("do", MalVal::BuiltinMacro(sform::r#do));
-    data.set("if", MalVal::BuiltinMacro(sform::r#if));
-    data.set("fn*", MalVal::BuiltinMacro(sform::r#fn));
+    data.set("let*", MalVal::Special(sform::r#let));
+    data.set("def!", MalVal::Special(sform::def));
+    data.set("do", MalVal::Special(sform::r#do));
+    data.set("if", MalVal::Special(sform::r#if));
+    data.set("fn*", MalVal::Special(sform::r#fn));
 }
 
 mod sform {
     use crate::{
-        env::{Env, Error},
+        env::{Env, Error, TcoVal},
         ns::{take_atleast, to_iter},
-        types::{List, MalVal},
+        types::{List, MalVal, TcoRet},
     };
 
     use super::{take_exact, to_sym};
 
-    pub fn r#let(env: &mut Env, args: List) -> Result<MalVal, Error> {
+    pub fn r#let(env: &mut Env, args: List) -> TcoRet {
         let [bindings, body] = take_exact(args)?;
         let mut bindings = to_iter(bindings)?;
 
@@ -45,10 +45,10 @@ mod sform {
             env.set(key, value);
         }
 
-        env.eval(body)
+        Ok(TcoVal::Unevaluated(body))
     }
 
-    pub fn def(env: &mut Env, args: List) -> Result<MalVal, Error> {
+    pub fn def(env: &mut Env, args: List) -> TcoRet {
         let [key, value] = take_exact(args)?;
 
         let key = to_sym(key)?;
@@ -56,28 +56,37 @@ mod sform {
         let value = env.eval(value)?;
         env.set(key, value.clone());
 
-        Ok(value)
+        Ok(TcoVal::Val(value))
     }
 
-    pub fn r#do(env: &mut Env, args: List) -> Result<MalVal, Error> {
+    pub fn r#do(env: &mut Env, args: List) -> TcoRet {
         let mut last = None;
+
         for value in args.into_iter() {
-            last = Some(env.eval(value)?);
+            if let Some(last) = last {
+                env.eval(last)?;
+            }
+
+            last = Some(value);
         }
-        Ok(last.unwrap_or_else(|| MalVal::List(List::new())))
+
+        match last {
+            Some(last) => Ok(TcoVal::Unevaluated(last)),
+            None => Ok(TcoVal::Val(MalVal::List(List::new()))),
+        }
     }
 
-    pub fn r#if(env: &mut Env, args: List) -> Result<MalVal, Error> {
+    pub fn r#if(env: &mut Env, args: List) -> TcoRet {
         let [cond, truthy, falsey] = take_exact(args)?;
 
         if env.eval(cond)?.is_true() {
-            env.eval(truthy)
+            Ok(TcoVal::Unevaluated(truthy))
         } else {
-            env.eval(falsey)
+            Ok(TcoVal::Unevaluated(falsey))
         }
     }
 
-    pub fn r#fn(env: &mut Env, args: List) -> Result<MalVal, Error> {
+    pub fn r#fn(env: &mut Env, args: List) -> TcoRet {
         let ([bindings, first], rest) = take_atleast(args)?;
 
         let mut binds: Vec<String> = vec![];
@@ -99,12 +108,12 @@ mod sform {
             }
         }
 
-        Ok(MalVal::Fn {
+        Ok(TcoVal::Val(MalVal::Fn {
             outer: env.clone(),
             binds,
             bind_rest,
             body: (Box::new(first), rest),
-        })
+        }))
     }
 }
 
@@ -118,10 +127,7 @@ pub fn print(data: &mut Env) {
 mod fmt {
     use std::fmt;
 
-    use crate::{
-        env::Error,
-        types::{List, MalVal},
-    };
+    use crate::types::{List, MalRet, MalVal};
 
     struct PrettyPrint(MalVal);
 
@@ -134,28 +140,28 @@ mod fmt {
         }
     }
 
-    pub fn prin(args: List) -> Result<MalVal, Error> {
+    pub fn prin(args: List) -> MalRet {
         for val in args {
             print!("{}", PrettyPrint(val));
         }
         Ok(MalVal::List(List::new()))
     }
 
-    pub fn print(args: List) -> Result<MalVal, Error> {
+    pub fn print(args: List) -> MalRet {
         for val in args {
             println!("{}", PrettyPrint(val));
         }
         Ok(MalVal::List(List::new()))
     }
 
-    pub fn eprin(args: List) -> Result<MalVal, Error> {
+    pub fn eprin(args: List) -> MalRet {
         for val in args {
             eprint!("{val}")
         }
         Ok(MalVal::List(List::new()))
     }
 
-    pub fn eprint(args: List) -> Result<MalVal, Error> {
+    pub fn eprint(args: List) -> MalRet {
         for val in args {
             eprintln!("{val}")
         }
@@ -181,16 +187,16 @@ mod cmp {
 
     use crate::{
         env::Error,
-        types::{List, MalVal},
+        types::{List, MalRet, MalVal},
     };
 
     use super::{all, all_reduce, take_exact};
 
-    pub fn eq(args: List) -> Result<MalVal, Error> {
+    pub fn eq(args: List) -> MalRet {
         all_reduce(args, eq2)
     }
 
-    pub fn not(args: List) -> Result<MalVal, Error> {
+    pub fn not(args: List) -> MalRet {
         let [value] = take_exact(args)?;
         Ok(MalVal::Bool(!value.is_true()))
     }
@@ -253,25 +259,25 @@ mod cmp {
         Ok(true)
     }
 
-    pub fn lt(args: List) -> Result<MalVal, Error> {
+    pub fn lt(args: List) -> MalRet {
         cmp_num(args, |ord| matches!(ord, Ordering::Less))
     }
 
-    pub fn lte(args: List) -> Result<MalVal, Error> {
+    pub fn lte(args: List) -> MalRet {
         cmp_num(args, |ord| matches!(ord, Ordering::Less | Ordering::Equal))
     }
 
-    pub fn gt(args: List) -> Result<MalVal, Error> {
+    pub fn gt(args: List) -> MalRet {
         cmp_num(args, |ord| matches!(ord, Ordering::Greater))
     }
 
-    pub fn gte(args: List) -> Result<MalVal, Error> {
+    pub fn gte(args: List) -> MalRet {
         cmp_num(args, |ord| {
             matches!(ord, Ordering::Greater | Ordering::Equal)
         })
     }
 
-    fn cmp_num(args: List, cond: impl Fn(Ordering) -> bool) -> Result<MalVal, Error> {
+    fn cmp_num(args: List, cond: impl Fn(Ordering) -> bool) -> MalRet {
         all_reduce(args, |fst, snd| {
             let ord = match (fst, snd) {
                 (MalVal::Int(fst), MalVal::Int(snd)) => fst.partial_cmp(snd),
@@ -288,11 +294,11 @@ mod cmp {
         })
     }
 
-    pub fn is_list(args: List) -> Result<MalVal, Error> {
+    pub fn is_list(args: List) -> MalRet {
         all(args, |value| Ok(matches!(value, MalVal::List(_))))
     }
 
-    pub fn is_empty(args: List) -> Result<MalVal, Error> {
+    pub fn is_empty(args: List) -> MalRet {
         all(args, |value| {
             Ok(match value {
                 MalVal::List(list) => list.is_empty(),
@@ -317,12 +323,12 @@ mod ds {
 
     use crate::{
         env::Error,
-        types::{List, MalKey, MalVal},
+        types::{List, MalKey, MalRet, MalVal},
     };
 
     use super::take_exact;
 
-    pub fn map(args: List) -> Result<MalVal, Error> {
+    pub fn map(args: List) -> MalRet {
         let mut args = args.into_iter();
         let mut map = HashMap::with_capacity(args.len() / 2);
 
@@ -342,15 +348,15 @@ mod ds {
         Ok(MalVal::Map(map))
     }
 
-    pub fn list(args: List) -> Result<MalVal, Error> {
+    pub fn list(args: List) -> MalRet {
         Ok(MalVal::List(args))
     }
 
-    pub fn vec(args: List) -> Result<MalVal, Error> {
+    pub fn vec(args: List) -> MalRet {
         Ok(MalVal::Vector(args.into_vec()))
     }
 
-    pub fn count(args: List) -> Result<MalVal, Error> {
+    pub fn count(args: List) -> MalRet {
         let [value] = take_exact(args)?;
 
         Ok(MalVal::Int(match value {
@@ -370,18 +376,15 @@ pub fn math(data: &mut Env) {
 }
 
 mod math {
-    use crate::{
-        env::Error,
-        types::{List, MalVal},
-    };
+    use crate::types::{List, MalRet, MalVal};
 
     use super::{op_error, reduce};
 
-    pub fn add(args: List) -> Result<MalVal, Error> {
+    pub fn add(args: List) -> MalRet {
         reduce(args, add2)
     }
 
-    fn add2(fst: MalVal, snd: MalVal) -> Result<MalVal, Error> {
+    fn add2(fst: MalVal, snd: MalVal) -> MalRet {
         match (fst, snd) {
             (MalVal::Int(int), MalVal::Float(float)) | (MalVal::Float(float), MalVal::Int(int)) => {
                 Ok(MalVal::Float(float + (int as f64)))
@@ -409,7 +412,7 @@ mod math {
         }
     }
 
-    pub fn sub(args: List) -> Result<MalVal, Error> {
+    pub fn sub(args: List) -> MalRet {
         reduce(args, |fst, snd| match (fst, snd) {
             (MalVal::Int(int), MalVal::Float(float)) | (MalVal::Float(float), MalVal::Int(int)) => {
                 Ok(MalVal::Float(float - (int as f64)))
@@ -420,7 +423,7 @@ mod math {
         })
     }
 
-    pub fn mul(args: List) -> Result<MalVal, Error> {
+    pub fn mul(args: List) -> MalRet {
         reduce(args, |fst, snd| match (fst, snd) {
             (MalVal::Int(int), MalVal::Float(float)) | (MalVal::Float(float), MalVal::Int(int)) => {
                 Ok(MalVal::Float(float * (int as f64)))
@@ -431,7 +434,7 @@ mod math {
         })
     }
 
-    pub fn div(args: List) -> Result<MalVal, Error> {
+    pub fn div(args: List) -> MalRet {
         reduce(args, |fst, snd| match (fst, snd) {
             (MalVal::Int(int), MalVal::Float(float)) | (MalVal::Float(float), MalVal::Int(int)) => {
                 Ok(MalVal::Float(float / (int as f64)))
@@ -467,7 +470,7 @@ fn to_iter(val: MalVal) -> Result<impl Iterator<Item = MalVal>, Error> {
     }
 }
 
-fn all(args: List, cond: impl Fn(MalVal) -> Result<bool, Error>) -> Result<MalVal, Error> {
+fn all(args: List, cond: impl Fn(MalVal) -> Result<bool, Error>) -> MalRet {
     for value in args {
         if !cond(value)? {
             return Ok(MalVal::Bool(false));
@@ -476,10 +479,7 @@ fn all(args: List, cond: impl Fn(MalVal) -> Result<bool, Error>) -> Result<MalVa
     Ok(MalVal::Bool(true))
 }
 
-fn all_reduce(
-    args: List,
-    cond: impl Fn(&MalVal, &MalVal) -> Result<bool, Error>,
-) -> Result<MalVal, Error> {
+fn all_reduce(args: List, cond: impl Fn(&MalVal, &MalVal) -> Result<bool, Error>) -> MalRet {
     let mut iter = args.into_iter();
     let Some(mut last) = iter.next() else {
         return Ok(MalVal::List(List::new()));
@@ -496,10 +496,7 @@ fn all_reduce(
     Ok(MalVal::Bool(true))
 }
 
-fn reduce(
-    args: List,
-    join: impl Fn(MalVal, MalVal) -> Result<MalVal, Error>,
-) -> Result<MalVal, Error> {
+fn reduce(args: List, join: impl Fn(MalVal, MalVal) -> MalRet) -> MalRet {
     let mut iter = args.into_iter();
     let Some(mut accum) = iter.next() else {
         return Ok(MalVal::List(List::new()));

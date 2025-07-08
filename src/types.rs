@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt, iter, slice, vec};
 
-use crate::env::{Env, Error};
+use crate::env::{Env, Error, TcoVal};
 
 #[derive(Debug, Clone)]
 pub enum MalVal {
@@ -13,8 +13,8 @@ pub enum MalVal {
     Int(i64),
     Float(f64),
     Bool(bool),
-    BuiltinFn(fn(List) -> Result<MalVal, Error>),
-    BuiltinMacro(fn(&mut Env, List) -> Result<MalVal, Error>),
+    BuiltinFn(fn(List) -> MalRet),
+    Special(fn(&mut Env, List) -> TcoRet),
     Fn {
         outer: Env,
         binds: Vec<String>,
@@ -22,6 +22,9 @@ pub enum MalVal {
         body: (Box<MalVal>, List),
     },
 }
+
+pub type TcoRet = Result<TcoVal, Error>;
+pub type MalRet = Result<MalVal, Error>;
 
 impl MalVal {
     pub fn is_true(&self) -> bool {
@@ -164,7 +167,7 @@ impl MalVal {
             MalVal::Float(_) => Self::FLOAT,
             MalVal::Bool(_) => Self::BOOL,
             MalVal::BuiltinFn(_) | MalVal::Fn { .. } => Self::FN,
-            MalVal::BuiltinMacro(_) => Self::MACRO,
+            MalVal::Special(_) => Self::MACRO,
         }
     }
 }
@@ -223,7 +226,7 @@ impl fmt::Display for MalVal {
             MalVal::Float(value) => write!(f, "{value:?}"),
             MalVal::Bool(value) => write!(f, "{value}"),
             MalVal::BuiltinFn(_) | MalVal::Fn { .. } => write!(f, "#<function>"),
-            MalVal::BuiltinMacro(_) => write!(f, "#<macro>"),
+            MalVal::Special(_) => write!(f, "#<macro>"),
         }
     }
 }

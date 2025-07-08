@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::types::{List, MalVal};
+use crate::types::{List, MalRet, MalVal, TcoRet};
 
 #[derive(Clone, Debug)]
 pub struct Env {
@@ -25,7 +25,7 @@ impl Env {
         self.data.insert(key.into(), value);
     }
 
-    pub fn set_fn(&mut self, key: impl Into<String>, value: fn(List) -> Result<MalVal, Error>) {
+    pub fn set_fn(&mut self, key: impl Into<String>, value: fn(List) -> MalRet) {
         self.set(key, MalVal::BuiltinFn(value))
     }
 
@@ -39,26 +39,31 @@ impl Env {
         }
     }
 
-    pub fn eval(&mut self, ast: MalVal) -> Result<MalVal, Error> {
-        match ast {
-            MalVal::List(list) => self.eval_list(list),
-            MalVal::Vector(vec) => self.eval_in(vec).map(MalVal::Vector),
-            MalVal::Map(map) => {
-                let mut ret = HashMap::with_capacity(map.len());
-                for (key, value) in map.into_iter() {
-                    ret.insert(key, self.eval(value)?);
+    pub fn eval(&mut self, mut ast: MalVal) -> MalRet {
+        loop {
+            match ast {
+                MalVal::List(list) => match self.eval_list(list)? {
+                    TcoVal::Val(val) => return Ok(val),
+                    TcoVal::Unevaluated(val) => ast = val,
+                },
+                MalVal::Vector(vec) => return self.eval_in(vec).map(MalVal::Vector),
+                MalVal::Map(map) => {
+                    let mut ret = HashMap::with_capacity(map.len());
+                    for (key, value) in map.into_iter() {
+                        ret.insert(key, self.eval(value)?);
+                    }
+                    return Ok(MalVal::Map(ret));
                 }
-                Ok(MalVal::Map(ret))
+                MalVal::Sym(sym) => return self.get(sym).cloned(),
+                MalVal::Str(_)
+                | MalVal::BuiltinFn(_)
+                | MalVal::Fn { .. }
+                | MalVal::Special(_)
+                | MalVal::Kwd(_)
+                | MalVal::Int(_)
+                | MalVal::Float(_)
+                | MalVal::Bool(_) => return Ok(ast),
             }
-            MalVal::Sym(sym) => self.get(sym).cloned(),
-            MalVal::Str(_)
-            | MalVal::BuiltinFn(_)
-            | MalVal::Fn { .. }
-            | MalVal::BuiltinMacro(_)
-            | MalVal::Kwd(_)
-            | MalVal::Int(_)
-            | MalVal::Float(_)
-            | MalVal::Bool(_) => Ok(ast),
         }
     }
 
@@ -70,15 +75,17 @@ impl Env {
         Ok(ret)
     }
 
-    fn eval_list(&mut self, mut vals: List) -> Result<MalVal, Error> {
+    fn eval_list(&mut self, mut vals: List) -> TcoRet {
         let Some(op) = vals.pop_front() else {
-            return Ok(MalVal::List(vals));
+            return Ok(TcoVal::Val(MalVal::List(vals)));
         };
 
         let op = self.eval(op)?;
 
         match op {
-            MalVal::BuiltinFn(f) => f(List::from_inner(self.eval_in(vals.into_inner())?)),
+            MalVal::BuiltinFn(f) => {
+                f(List::from_inner(self.eval_in(vals.into_inner())?)).map(TcoVal::Val)
+            }
             MalVal::Fn {
                 outer,
                 binds,
@@ -117,13 +124,16 @@ impl Env {
                     }
                 }
 
-                let mut last = env.eval(*body.0)?;
+                let mut last = *body.0;
+
                 for value in body.1.into_iter() {
-                    last = env.eval(value)?;
+                    env.eval(last)?;
+                    last = value;
                 }
-                Ok(last)
+
+                Ok(TcoVal::Unevaluated(last))
             }
-            MalVal::BuiltinMacro(f) => f(self, vals),
+            MalVal::Special(f) => f(self, vals),
             MalVal::List(_)
             | MalVal::Vector(_)
             | MalVal::Map(_)
@@ -135,6 +145,11 @@ impl Env {
             | MalVal::Bool(_) => Err(Error::CannotApply(op.type_name())),
         }
     }
+}
+
+pub enum TcoVal {
+    Val(MalVal),
+    Unevaluated(MalVal),
 }
 
 #[derive(thiserror::Error, Debug)]
