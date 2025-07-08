@@ -1,5 +1,6 @@
 use crate::{
     env::{Env, Error},
+    reader,
     types::{List, MalRet, MalVal},
 };
 
@@ -9,6 +10,17 @@ pub fn std(data: &mut Env) {
     ds(data);
     cmp(data);
     print(data);
+    std_mal(data);
+}
+
+fn std_mal(data: &mut Env) {
+    let ast = reader::parse(include_str!("std.mal")).expect("parsing 'lib.mal' should never fail");
+
+    if let Some(ast) = ast {
+        _ = data
+            .eval(ast)
+            .expect("evaluating 'lib.mal' should never fail")
+    }
 }
 
 pub fn sform(data: &mut Env) {
@@ -26,19 +38,19 @@ pub fn sform(data: &mut Env) {
 mod sform {
     use crate::{
         env::{Env, Error, TcoVal},
-        ns::{take_atleast, to_iter},
+        ns::take_atleast,
         types::{List, MalFn, MalRet, MalVal, TcoRet},
     };
 
-    use super::{take_exact, to_sym};
+    use super::{take_exact, to_list_like, to_sym};
 
     pub fn quote(_: &mut Env, args: List) -> TcoRet {
-        let [value] = take_exact(args)?;
+        let [value] = take_exact("quote", args)?;
         Ok(TcoVal::Val(value))
     }
 
     pub fn quasiquote(env: &mut Env, args: List) -> TcoRet {
-        let [args] = take_exact(args)?;
+        let [args] = take_exact("quasiquote", args)?;
 
         let MalVal::List(args) = args else {
             return Ok(TcoVal::Val(args));
@@ -50,7 +62,7 @@ mod sform {
     pub fn quasiquote_inner(env: &mut Env, args: List) -> TcoRet {
         let args = match try_take1_sym(args, "unquote") {
             Ok(args) => {
-                let [value] = take_exact(args)?;
+                let [value] = take_exact("unquote", args)?;
                 return Ok(TcoVal::Unevaluated(value));
             }
             Err(args) => args,
@@ -66,8 +78,9 @@ mod sform {
 
             match try_take1_sym(value, "splice-unquote") {
                 Ok(args) => {
-                    let [value] = take_exact(args)?;
-                    for el in to_iter(value)? {
+                    let [value] = take_exact("splice-unquote", args)?;
+                    let value = env.eval(value)?;
+                    for el in to_list_like("splice-unquote", value)? {
                         new_list.push_front(el);
                     }
                 }
@@ -100,8 +113,8 @@ mod sform {
     }
 
     pub fn r#let(env: &mut Env, args: List) -> TcoRet {
-        let [bindings, body] = take_exact(args)?;
-        let mut bindings = to_iter(bindings)?;
+        let [bindings, body] = take_exact("let*", args)?;
+        let mut bindings = to_list_like("let*", bindings)?.into_iter();
 
         let mut env = Env::inner(env);
 
@@ -110,7 +123,7 @@ mod sform {
                 return Err(Error::UnevenArguments("let*"));
             };
 
-            let key = to_sym(key)?;
+            let key = to_sym("let*", key)?;
 
             let value = env.eval(value)?;
             env.set(key, value);
@@ -120,8 +133,8 @@ mod sform {
     }
 
     pub fn def(env: &mut Env, args: List) -> TcoRet {
-        let [key, value] = take_exact(args)?;
-        let key = to_sym(key)?;
+        let [key, value] = take_exact("def!", args)?;
+        let key = to_sym("def!", key)?;
         let mut value = env.eval(value)?;
 
         if let MalVal::Fn(MalFn { name, .. }) = &mut value {
@@ -151,7 +164,7 @@ mod sform {
     }
 
     pub fn r#if(env: &mut Env, args: List) -> TcoRet {
-        let [cond, truthy, falsey] = take_exact(args)?;
+        let [cond, truthy, falsey] = take_exact("if", args)?;
 
         if env.eval(cond)?.is_true() {
             Ok(TcoVal::Unevaluated(truthy))
@@ -161,13 +174,13 @@ mod sform {
     }
 
     pub fn r#fn(env: &mut Env, args: List) -> TcoRet {
-        let ([bindings, first], rest) = take_atleast(args)?;
+        let ([bindings, first], rest) = take_atleast("fn*", args)?;
 
         let mut binds: Vec<String> = vec![];
         let mut bind_rest: Option<Option<String>> = None;
 
-        for value in to_iter(bindings)? {
-            let sym = to_sym(value)?;
+        for value in to_list_like("fn*", bindings)?.into_iter() {
+            let sym = to_sym("fn*", value)?;
 
             match &bind_rest {
                 Some(None) => bind_rest = Some(Some(sym)),
@@ -193,10 +206,14 @@ mod sform {
     }
 
     pub fn r#macro(args: List) -> MalRet {
-        let [value] = take_exact(args)?;
+        let [value] = take_exact("macro", args)?;
 
         let MalVal::Fn(mut f) = value else {
-            return Err(Error::UnexpectedType(MalVal::FN, value.type_name()));
+            return Err(Error::UnexpectedType(
+                MalVal::FN,
+                value.type_name(),
+                "macro".into(),
+            ));
         };
 
         f.is_macro = true;
@@ -285,7 +302,7 @@ mod cmp {
     }
 
     pub fn not(args: List) -> MalRet {
-        let [value] = take_exact(args)?;
+        let [value] = take_exact("not", args)?;
         Ok(MalVal::Bool(!value.is_true()))
     }
 
@@ -406,6 +423,10 @@ pub fn ds(data: &mut Env) {
     data.set_fn("cons", ds::cons);
     data.set_fn("concat", ds::concat);
 
+    data.set_fn("first", ds::first);
+    data.set_fn("rest", ds::rest);
+    data.set_fn("nth", ds::nth);
+
     data.set_fn("count", ds::count);
 }
 
@@ -417,16 +438,48 @@ mod ds {
         types::{List, MalKey, MalRet, MalVal},
     };
 
-    use super::take_exact;
+    use super::{take_exact, to_list_like};
+
+    pub fn nth(args: List) -> MalRet {
+        let [value, index] = take_exact("nth", args)?;
+
+        let mut value = to_list_like("nth", value)?;
+
+        let MalVal::Int(index) = index else {
+            return Err(Error::UnexpectedType(
+                MalVal::INT,
+                index.type_name(),
+                "nth".into(),
+            ));
+        };
+
+        if index < 0 || index >= value.len() as i64 {
+            return Err(Error::IndexOutOfRange(index, value.len()));
+        }
+
+        Ok(value.swap_remove(index as usize))
+    }
+
+    pub fn first(args: List) -> MalRet {
+        let [value] = take_exact("first", args)?;
+        let mut value = to_list_like("first", value)?.to_list();
+        let Some(value) = value.pop_front() else {
+            return Err(Error::FirstOfEmptyList);
+        };
+        Ok(value)
+    }
+
+    pub fn rest(args: List) -> MalRet {
+        let [value] = take_exact("rest", args)?;
+        let mut ls = to_list_like("rest", value)?.to_list();
+        ls.pop_front();
+        Ok(MalVal::List(ls))
+    }
 
     pub fn cons(args: List) -> MalRet {
-        let [el, value] = take_exact(args)?;
+        let [el, value] = take_exact("cons", args)?;
 
-        let mut list = match value {
-            MalVal::List(list) => list,
-            MalVal::Vector(vec) => List::from_vec(vec),
-            _ => return Err(Error::UnexpectedType(MalVal::LIST_LIKE, value.type_name())),
-        };
+        let mut list = to_list_like("cons", value)?.to_list();
 
         list.push_front(el);
 
@@ -437,18 +490,8 @@ mod ds {
         let mut list = List::new();
 
         for value in args.into_rev() {
-            match value {
-                MalVal::List(ls) => {
-                    for el in ls.into_rev() {
-                        list.push_front(el);
-                    }
-                }
-                MalVal::Vector(vec) => {
-                    for el in vec.into_iter().rev() {
-                        list.push_front(el);
-                    }
-                }
-                _ => return Err(Error::UnexpectedType(MalVal::LIST_LIKE, value.type_name())),
+            for el in to_list_like("concat", value)?.into_iter().rev() {
+                list.push_front(el);
             }
         }
 
@@ -484,7 +527,7 @@ mod ds {
     }
 
     pub fn count(args: List) -> MalRet {
-        let [value] = take_exact(args)?;
+        let [value] = take_exact("count", args)?;
 
         Ok(MalVal::Int(match value {
             MalVal::List(list) => list.len(),
@@ -581,19 +624,27 @@ fn op_error(op: &'static str, (fst, snd): (MalVal, MalVal)) -> Error {
     }
 }
 
-fn to_sym(value: MalVal) -> Result<String, Error> {
+fn to_sym(name: impl Into<String>, value: MalVal) -> Result<String, Error> {
     let MalVal::Sym(key) = value else {
-        return Err(Error::UnexpectedType(MalVal::SYM, value.type_name()));
+        return Err(Error::UnexpectedType(
+            MalVal::SYM,
+            value.type_name(),
+            name.into(),
+        ));
     };
 
     Ok(key)
 }
 
-fn to_iter(val: MalVal) -> Result<ListLikeIter, Error> {
+fn to_list_like(name: impl Into<String>, val: MalVal) -> Result<ListLike, Error> {
     match val {
-        MalVal::List(list) => Ok(ListLikeIter::List(list.into_iter())),
-        MalVal::Vector(vec) => Ok(ListLikeIter::Vector(vec.into_iter())),
-        _ => Err(Error::UnexpectedType(MalVal::LIST_LIKE, val.type_name())),
+        MalVal::List(list) => Ok(ListLike::List(list)),
+        MalVal::Vector(vec) => Ok(ListLike::Vector(vec)),
+        _ => Err(Error::UnexpectedType(
+            MalVal::LIST_LIKE,
+            val.type_name(),
+            name.into(),
+        )),
     }
 }
 
@@ -636,6 +687,53 @@ fn reduce(args: List, join: impl Fn(MalVal, MalVal) -> MalRet) -> MalRet {
     Ok(accum)
 }
 
+pub enum ListLike {
+    List(List),
+    Vector(Vec<MalVal>),
+}
+
+impl ListLike {
+    pub fn to_list(self) -> List {
+        match self {
+            ListLike::List(list) => list,
+            ListLike::Vector(vec) => List::from_vec(vec),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            ListLike::List(list) => list.len(),
+            ListLike::Vector(vec) => vec.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            ListLike::List(list) => list.is_empty(),
+            ListLike::Vector(vec) => vec.is_empty(),
+        }
+    }
+
+    pub fn swap_remove(&mut self, index: usize) -> MalVal {
+        match self {
+            ListLike::List(list) => list.swap_remove(index),
+            ListLike::Vector(vec) => vec.swap_remove(index),
+        }
+    }
+}
+
+impl IntoIterator for ListLike {
+    type Item = MalVal;
+    type IntoIter = ListLikeIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            ListLike::List(list) => ListLikeIter::List(list.into_iter()),
+            ListLike::Vector(vec) => ListLikeIter::Vector(vec.into_iter()),
+        }
+    }
+}
+
 pub enum ListLikeIter {
     List(<List as IntoIterator>::IntoIter),
     Vector(<Vec<MalVal> as IntoIterator>::IntoIter),
@@ -661,9 +759,12 @@ impl DoubleEndedIterator for ListLikeIter {
     }
 }
 
-fn take_atleast<const N: usize>(mut list: List) -> Result<([MalVal; N], List), Error> {
+fn take_atleast<const N: usize>(
+    name: impl Into<String>,
+    mut list: List,
+) -> Result<([MalVal; N], List), Error> {
     if list.len() < N {
-        return Err(Error::AtleastArityMismatch(N, list.len()));
+        return Err(Error::AtleastArityMismatch(N, list.len(), name.into()));
     }
 
     let rest = list.split_off(N);
@@ -675,9 +776,9 @@ fn take_atleast<const N: usize>(mut list: List) -> Result<([MalVal; N], List), E
     Ok((array, rest))
 }
 
-fn take_exact<const N: usize>(args: List) -> Result<[MalVal; N], Error> {
+fn take_exact<const N: usize>(name: impl Into<String>, args: List) -> Result<[MalVal; N], Error> {
     match args.into_array::<N>() {
         Ok(arr) => Ok(arr),
-        Err(list) => Err(Error::ArityMismatch(N, list.len())),
+        Err(list) => Err(Error::ArityMismatch(N, list.len(), name.into())),
     }
 }

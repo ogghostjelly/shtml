@@ -59,6 +59,10 @@ impl List {
         self.0.last()
     }
 
+    pub fn swap_remove(&mut self, index: usize) -> MalVal {
+        self.0.swap_remove(self.0.len() - index - 1)
+    }
+
     pub fn split_off(&mut self, at: usize) -> Self {
         let mut o = self.0.split_off(self.len() - at);
         std::mem::swap(&mut self.0, &mut o);

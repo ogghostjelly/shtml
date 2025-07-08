@@ -13,8 +13,8 @@ impl Env {
         Self { data, outer }
     }
 
-    pub fn top(data: HashMap<String, MalVal>) -> Self {
-        Self::new(data, None)
+    pub fn empty() -> Self {
+        Self::new(HashMap::new(), None)
     }
 
     pub fn inner(env: &Env) -> Self {
@@ -108,7 +108,7 @@ impl Env {
                 f(List::from_rev(self.eval_in(vals.into_rev())?)).map(TcoVal::Val)
             }
             MalVal::Fn(MalFn {
-                name: _,
+                name,
                 is_macro,
                 outer,
                 binds,
@@ -119,7 +119,11 @@ impl Env {
                     Some(bind) => bind.as_ref(),
                     None => {
                         if binds.len() != vals.len() {
-                            return Err(Error::ArityMismatch(binds.len(), vals.len()));
+                            return Err(Error::ArityMismatch(
+                                binds.len(),
+                                vals.len(),
+                                name.unwrap_or_else(|| "lambda".to_string()),
+                            ));
                         }
                         None
                     }
@@ -154,10 +158,14 @@ impl Env {
                     last = value;
                 }
 
-                // Returning Val instead of Unevaluated might make TCO completely useless
-                // but it needs to happen since `last` has to be evaluated in the `env` environment
-                // I have no idea if this is a bad idea or not ;-;
-                Ok(TcoVal::Val(env.eval(last)?))
+                Ok(if is_macro {
+                    TcoVal::Unevaluated(env.eval(last)?)
+                } else {
+                    // Returning Val instead of Unevaluated might make TCO completely useless
+                    // but it needs to happen since `last` has to be evaluated in the `env` environment
+                    // I have no idea if this is a bad idea or not ;-;
+                    TcoVal::Val(env.eval(last)?)
+                })
             }
             MalVal::Special(_, f) => f(self, vals),
             MalVal::List(_)
@@ -192,18 +200,22 @@ pub enum Error {
     },
     #[error("cannot use '{0}' on '{1}'")]
     InvalidOperation1(&'static str, &'static str),
-    #[error("expected type '{0}' but got '{1}'")]
-    UnexpectedType(&'static str, &'static str),
+    #[error("expected type '{0}' but got '{1}' in {2}")]
+    UnexpectedType(&'static str, &'static str, String),
     #[error("'{0}' expects an even number of arguments")]
     UnevenArguments(&'static str),
     #[error("'{0}' cannot be a map key")]
     InvalidMapKey(&'static str),
-    #[error("expected {0} arguments but got {1}")]
-    ArityMismatch(usize, usize),
-    #[error("expected at least {0} arguments but got {1}")]
-    AtleastArityMismatch(usize, usize),
+    #[error("expected {0} arguments but got {1} in {2}")]
+    ArityMismatch(usize, usize, String),
+    #[error("expected at least {0} arguments but got {1} in {2}")]
+    AtleastArityMismatch(usize, usize, String),
     #[error("cannot have more binds after variadic '&'")]
     BindsAfterRest,
     #[error("symbol not found '{0}' cannot be used outside of quasiquote")]
     OutsideOfQuasiquote(&'static str),
+    #[error("index out of range {0} for list of size {1}")]
+    IndexOutOfRange(i64, usize),
+    #[error("cannot use 'first' on an empty list")]
+    FirstOfEmptyList,
 }

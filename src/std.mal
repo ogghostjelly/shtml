@@ -1,0 +1,21 @@
+(do
+
+(def! defn! (macro (fn*
+    [name params & body]
+    `(def! ~name (fn* ~params ~@body)))))
+
+(def! defmacro! (macro (fn*
+    [name params & body]
+    `(def! ~name (macro (fn* ~params ~@body))))))
+
+(def! cond (macro (fn*
+    [& xs]
+    (if (not (empty? xs))
+        (list 'if (first xs)
+            (if (> (count xs) 1)
+                (nth xs 1)
+                (throw "odd number of forms to cond"))
+            (cons 'cond (rest (rest xs))))
+        '()))))
+
+)

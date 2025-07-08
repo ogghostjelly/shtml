@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use colored::Colorize as _;
 use rustyline::{error::ReadlineError, Editor};
 use shtml::{env::Env, ns, reader};
@@ -18,7 +16,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut env = {
-        let mut data = Env::new(HashMap::new(), None);
+        let mut data = Env::empty();
         ns::std(&mut data);
         data
     };
