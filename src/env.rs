@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::types::{List, MalRet, MalVal, TcoRet};
+use crate::types::{List, MalFn, MalRet, MalVal, TcoRet};
 
 #[derive(Clone, Debug)]
 pub struct Env {
@@ -107,13 +107,14 @@ impl Env {
             MalVal::BuiltinFn(_, f) => {
                 f(List::from_rev(self.eval_in(vals.into_rev())?)).map(TcoVal::Val)
             }
-            MalVal::Fn {
+            MalVal::Fn(MalFn {
                 name: _,
+                is_macro,
                 outer,
                 binds,
                 bind_rest,
                 body,
-            } => {
+            }) => {
                 let bind_rest = match &bind_rest {
                     Some(bind) => bind.as_ref(),
                     None => {
@@ -129,7 +130,7 @@ impl Env {
                 let mut vals = vals.into_iter();
 
                 for (key, value) in bindings.zip(&mut vals) {
-                    let value = self.eval(value)?;
+                    let value = if is_macro { value } else { self.eval(value)? };
                     env.set(key, value)
                 }
 
@@ -137,7 +138,7 @@ impl Env {
                     let mut ls = vec![];
 
                     for value in vals {
-                        let value = self.eval(value)?;
+                        let value = if is_macro { value } else { self.eval(value)? };
                         ls.push(value)
                     }
 
@@ -153,7 +154,10 @@ impl Env {
                     last = value;
                 }
 
-                Ok(TcoVal::Unevaluated(last))
+                // Returning Val instead of Unevaluated might make TCO completely useless
+                // but it needs to happen since `last` has to be evaluated in the `env` environment
+                // I have no idea if this is a bad idea or not ;-;
+                Ok(TcoVal::Val(env.eval(last)?))
             }
             MalVal::Special(_, f) => f(self, vals),
             MalVal::List(_)

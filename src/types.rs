@@ -15,13 +15,7 @@ pub enum MalVal {
     Bool(bool),
     BuiltinFn(String, fn(List) -> MalRet),
     Special(String, fn(&mut Env, List) -> TcoRet),
-    Fn {
-        name: Option<String>,
-        outer: Env,
-        binds: Vec<String>,
-        bind_rest: Option<Option<String>>,
-        body: (Box<MalVal>, List),
-    },
+    Fn(MalFn),
 }
 
 pub type TcoRet = Result<TcoVal, Error>;
@@ -35,6 +29,16 @@ impl MalVal {
             _ => true,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct MalFn {
+    pub name: Option<String>,
+    pub is_macro: bool,
+    pub outer: Env,
+    pub binds: Vec<String>,
+    pub bind_rest: Option<Option<String>>,
+    pub body: (Box<MalVal>, List),
 }
 
 #[derive(Debug, Clone)]

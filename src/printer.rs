@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::types::MalVal;
+use crate::types::{MalFn, MalVal};
 
 impl fmt::Display for MalVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -41,11 +41,27 @@ fn display(value: &MalVal, f: &mut fmt::Formatter<'_>, mut quote: bool) -> fmt::
         MalVal::Float(value) => write!(f, "{value:?}"),
         MalVal::Bool(value) => write!(f, "{value}"),
         MalVal::BuiltinFn(name, _)
-        | MalVal::Fn {
-            name: Some(name), ..
-        } => write!(f, "#<function:{name}>"),
-        MalVal::Fn { name: None, .. } => write!(f, "#<function>"),
-        MalVal::Special(name, _) => write!(f, "#<macro:{name}>"),
+        | MalVal::Fn(MalFn {
+            name: Some(name),
+            is_macro: false,
+            ..
+        }) => write!(f, "#<function:{name}>"),
+        MalVal::Fn(MalFn {
+            name: None,
+            is_macro: false,
+            ..
+        }) => write!(f, "#<function>"),
+        MalVal::Special(name, _)
+        | MalVal::Fn(MalFn {
+            name: Some(name),
+            is_macro: true,
+            ..
+        }) => write!(f, "#<macro:{name}>"),
+        MalVal::Fn(MalFn {
+            name: None,
+            is_macro: true,
+            ..
+        }) => write!(f, "#<macro>"),
     }
 }
 

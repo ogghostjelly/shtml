@@ -17,6 +17,7 @@ pub fn sform(data: &mut Env) {
     data.set_special("do", sform::r#do);
     data.set_special("if", sform::r#if);
     data.set_special("fn*", sform::r#fn);
+    data.set_fn("macro", sform::r#macro);
 
     data.set_special("quote", sform::quote);
     data.set_special("quasiquote", sform::quasiquote);
@@ -26,7 +27,7 @@ mod sform {
     use crate::{
         env::{Env, Error, TcoVal},
         ns::{take_atleast, to_iter},
-        types::{List, MalVal, TcoRet},
+        types::{List, MalFn, MalRet, MalVal, TcoRet},
     };
 
     use super::{take_exact, to_sym};
@@ -78,45 +79,6 @@ mod sform {
         }
 
         Ok(TcoVal::Val(MalVal::List(new_list)))
-
-        /*let mut new_list = List::new();
-
-        for value in value.into_rev() {
-            let MalVal::List(mut value) = value else {
-                new_list.push_front(value);
-                continue;
-            };
-
-            // Try take the first symbol
-            // if that fails just push the value to new_list
-            let Some(sym) = value.pop_front() else {
-                new_list.push_front(MalVal::List(value));
-                continue;
-            };
-            let MalVal::Sym(sym) = sym else {
-                value.push_front(sym);
-                let value = quasiquote(env, value)?;
-                new_list.push_front(env.eval_tco(value)?);
-                continue;
-            };
-
-            // Handle unquote/splice-unquote
-            if sym == "unquote" {
-                let [value] = take_exact(value)?;
-                let value = env.eval(value)?;
-                new_list.push_front(value);
-            } else if sym == "splice-unquote" {
-                let [value] = take_exact(value)?;
-                for val in to_iter(env.eval(value)?)?.rev() {
-                    new_list.push_front(val);
-                }
-            } else {
-                let value = quasiquote(env, value)?;
-                new_list.push_front(env.eval_tco(value)?);
-            }
-        }
-
-        Ok(TcoVal::Val(MalVal::List(new_list)))*/
     }
 
     fn try_take1_sym(mut args: List, s: &str) -> Result<List, List> {
@@ -162,7 +124,7 @@ mod sform {
         let key = to_sym(key)?;
         let mut value = env.eval(value)?;
 
-        if let MalVal::Fn { name, .. } = &mut value {
+        if let MalVal::Fn(MalFn { name, .. }) = &mut value {
             *name = Some(key.clone());
         }
 
@@ -220,13 +182,26 @@ mod sform {
             }
         }
 
-        Ok(TcoVal::Val(MalVal::Fn {
+        Ok(TcoVal::Val(MalVal::Fn(MalFn {
             name: None,
+            is_macro: false,
             outer: env.clone(),
             binds,
             bind_rest,
             body: (Box::new(first), rest),
-        }))
+        })))
+    }
+
+    pub fn r#macro(args: List) -> MalRet {
+        let [value] = take_exact(args)?;
+
+        let MalVal::Fn(mut f) = value else {
+            return Err(Error::UnexpectedType(MalVal::FN, value.type_name()));
+        };
+
+        f.is_macro = true;
+
+        Ok(MalVal::Fn(f))
     }
 }
 
