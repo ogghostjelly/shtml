@@ -141,9 +141,9 @@ mod sform {
             *name = Some(key.clone());
         }
 
-        env.set(key, value.clone());
+        env.set(key, value);
 
-        Ok(TcoVal::Val(value))
+        Ok(TcoVal::Val(MalVal::List(List::new())))
     }
 
     pub fn r#do(env: &mut Env, args: List) -> TcoRet {
@@ -223,8 +223,6 @@ mod sform {
 }
 
 pub fn print(data: &mut Env) {
-    data.set_fn("eprin", fmt::eprin);
-    data.set_fn("eprint", fmt::eprint);
     data.set_fn("prin", fmt::prin);
     data.set_fn("print", fmt::print);
 }
@@ -234,9 +232,11 @@ mod fmt {
 
     use crate::types::{List, MalRet, MalVal};
 
-    struct PrettyPrint(MalVal);
+    use super::take_exact;
 
-    impl fmt::Display for PrettyPrint {
+    struct PrettyPrint<'a>(&'a MalVal);
+
+    impl fmt::Display for PrettyPrint<'_> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match &self.0 {
                 MalVal::Str(s) => s.fmt(f),
@@ -246,31 +246,15 @@ mod fmt {
     }
 
     pub fn prin(args: List) -> MalRet {
-        for val in args {
-            print!("{}", PrettyPrint(val));
-        }
-        Ok(MalVal::List(List::new()))
+        let [value] = take_exact("prin", args)?;
+        print!("{}", PrettyPrint(&value));
+        Ok(value)
     }
 
     pub fn print(args: List) -> MalRet {
-        for val in args {
-            println!("{}", PrettyPrint(val));
-        }
-        Ok(MalVal::List(List::new()))
-    }
-
-    pub fn eprin(args: List) -> MalRet {
-        for val in args {
-            eprint!("{val}")
-        }
-        Ok(MalVal::List(List::new()))
-    }
-
-    pub fn eprint(args: List) -> MalRet {
-        for val in args {
-            eprintln!("{val}")
-        }
-        Ok(MalVal::List(List::new()))
+        let [value] = take_exact("prin", args)?;
+        println!("{}", PrettyPrint(&value));
+        Ok(value)
     }
 }
 
