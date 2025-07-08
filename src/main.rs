@@ -1,15 +1,26 @@
+use clap::Parser as _;
 use colored::Colorize as _;
 use rustyline::{error::ReadlineError, Editor};
-use shtml::{env::Env, ns, reader};
+use shtml::{
+    cli::{Cli, Commands, ProjectPath},
+    env::Env,
+    ns, reader,
+};
 
 fn main() {
-    match run() {
+    let res = match Cli::parse().commands.unwrap_or(Commands::Repl) {
+        Commands::Repl => repl(),
+        Commands::Build(path) => build(path),
+        Commands::Watch(path) => watch(path),
+    };
+
+    match res {
         Ok(()) => {}
         Err(e) => eprintln!("{} {e}", "err:".red()),
     }
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
+fn repl() -> Result<(), Box<dyn std::error::Error>> {
     let mut rl = Editor::<(), rustyline::history::DefaultHistory>::new()?;
     if rl.load_history(".mal-history").is_err() {
         eprintln!("No previous history.");
@@ -47,4 +58,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn watch(path: ProjectPath) -> Result<(), Box<dyn std::error::Error>> {
+    let path = path.or_pwd()?;
+
+    _ = path;
+
+    todo!()
+}
+
+fn build(path: ProjectPath) -> Result<(), Box<dyn std::error::Error>> {
+    let path = path.or_pwd()?;
+
+    _ = path;
+
+    todo!()
 }
