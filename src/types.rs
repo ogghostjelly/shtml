@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, iter, slice, vec};
+use std::{collections::HashMap, iter, slice, vec};
 
 use crate::env::{Env, Error, TcoVal};
 
@@ -198,7 +198,7 @@ impl MalKey {
         }
     }
 
-    fn into_value(self) -> MalVal {
+    pub fn into_value(self) -> MalVal {
         match self {
             MalKey::Bool(value) => MalVal::Bool(value),
             MalKey::Int(value) => MalVal::Int(value),
@@ -207,56 +207,4 @@ impl MalKey {
             MalKey::Sym(value) => MalVal::Sym(value),
         }
     }
-}
-
-impl fmt::Display for MalVal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MalVal::List(vals) => join_vals(f, "'(", ")", vals.iter()),
-            MalVal::Vector(vals) => join_vals(f, "[", "]", vals.iter()),
-            MalVal::Map(map) => join_vals(
-                f,
-                "{",
-                "}",
-                map.iter()
-                    .map(|(key, value)| (key.clone().into_value(), value))
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .flat_map(|(x, y)| [x, y]),
-            ),
-            MalVal::Sym(value) => write!(f, "{value}"),
-            MalVal::Str(value) => write!(f, "\"{}\"", escape(value)),
-            MalVal::Kwd(value) => write!(f, ":{value}"),
-            MalVal::Int(value) => write!(f, "{value}"),
-            MalVal::Float(value) => write!(f, "{value:?}"),
-            MalVal::Bool(value) => write!(f, "{value}"),
-            MalVal::BuiltinFn(_) | MalVal::Fn { .. } => write!(f, "#<function>"),
-            MalVal::Special(_) => write!(f, "#<macro>"),
-        }
-    }
-}
-
-fn join_vals<'a>(
-    f: &mut fmt::Formatter<'_>,
-    start: &str,
-    end: &str,
-    mut vals: impl Iterator<Item = &'a MalVal>,
-) -> fmt::Result {
-    write!(f, "{start}")?;
-    if let Some(val) = vals.next() {
-        write!(f, "{val}")?;
-    }
-    for val in vals {
-        write!(f, " {val}")?;
-    }
-    write!(f, "{end}")
-}
-
-fn escape(input: &str) -> String {
-    input
-        .replace("\r", "\\r")
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-        .replace("\"", "\\\"")
-        .replace("\\", "\\\\")
 }
