@@ -50,6 +50,10 @@ impl List {
         Self(Vec::new())
     }
 
+    pub fn first(&self) -> Option<&MalVal> {
+        self.0.last()
+    }
+
     pub fn split_off(&mut self, at: usize) -> Self {
         let mut o = self.0.split_off(self.len() - at);
         std::mem::swap(&mut self.0, &mut o);
@@ -97,11 +101,11 @@ impl IntoIterator for List {
 #[macro_export]
 macro_rules! list {
     () => (
-        $crate::types::List::from_inner(std::vec::Vec::new())
+        $crate::types::List::from_rev(std::vec::Vec::new())
     );
 
     ([] reversed: $x:expr) => {
-        $crate::types::List::from_inner(<[_]>::into_vec(
+        $crate::types::List::from_rev(<[_]>::into_vec(
             // Using the intrinsic produces a dramatic improvement in stack usage for
             // unoptimized programs using this code path to construct large Vecs.
             std::boxed::Box::new($x)
@@ -118,11 +122,11 @@ macro_rules! list {
 }
 
 impl List {
-    pub fn from_inner(inner: Vec<MalVal>) -> Self {
-        Self(inner)
+    pub fn from_rev(rev: Vec<MalVal>) -> Self {
+        Self(rev)
     }
 
-    pub fn into_inner(self) -> Vec<MalVal> {
+    pub fn into_rev(self) -> Vec<MalVal> {
         self.0
     }
 
@@ -145,6 +149,7 @@ impl List {
 impl MalVal {
     pub const LIST: &str = "list";
     pub const VECTOR: &str = "vector";
+    pub const LIST_LIKE: &str = "list-like";
     pub const MAP: &str = "map";
     pub const SYM: &str = "symbol";
     pub const STR: &str = "string";

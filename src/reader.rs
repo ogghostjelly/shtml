@@ -94,7 +94,7 @@ fn value(input: Span<'_>) -> TResult<'_, Option<MalVal>> {
 fn shorthand(input: Span<'_>) -> TResult<'_, MalVal> {
     Or(
         Or(Shorthand("'", "quote"), Shorthand("`", "quasiquote")),
-        Or(Shorthand("~@", "splice_unquote"), Shorthand("~", "unquote")),
+        Or(Shorthand("~@", "splice-unquote"), Shorthand("~", "unquote")),
     )
     .parse(input)
 }

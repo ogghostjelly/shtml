@@ -17,6 +17,9 @@ pub fn sform(data: &mut Env) {
     data.set("do", MalVal::Special(sform::r#do));
     data.set("if", MalVal::Special(sform::r#if));
     data.set("fn*", MalVal::Special(sform::r#fn));
+
+    data.set("quote", MalVal::Special(sform::quote));
+    data.set("quasiquote", MalVal::Special(sform::quasiquote));
 }
 
 mod sform {
@@ -27,6 +30,112 @@ mod sform {
     };
 
     use super::{take_exact, to_sym};
+
+    pub fn quote(_: &mut Env, args: List) -> TcoRet {
+        let [value] = take_exact(args)?;
+        Ok(TcoVal::Val(value))
+    }
+
+    pub fn quasiquote(env: &mut Env, args: List) -> TcoRet {
+        let [args] = take_exact(args)?;
+
+        let MalVal::List(args) = args else {
+            return Ok(TcoVal::Val(args));
+        };
+
+        quasiquote_inner(env, args)
+    }
+
+    pub fn quasiquote_inner(env: &mut Env, args: List) -> TcoRet {
+        let args = match try_take1_sym(args, "unquote") {
+            Ok(args) => {
+                let [value] = take_exact(args)?;
+                return Ok(TcoVal::Unevaluated(value));
+            }
+            Err(args) => args,
+        };
+
+        let mut new_list = List::new();
+
+        for value in args.into_rev() {
+            let MalVal::List(value) = value else {
+                new_list.push_front(value);
+                continue;
+            };
+
+            match try_take1_sym(value, "splice-unquote") {
+                Ok(args) => {
+                    let [value] = take_exact(args)?;
+                    for el in to_iter(value)? {
+                        new_list.push_front(el);
+                    }
+                }
+                Err(value) => new_list.push_front({
+                    let value = quasiquote_inner(env, value)?;
+                    env.eval_tco(value)?
+                }),
+            }
+        }
+
+        Ok(TcoVal::Val(MalVal::List(new_list)))
+
+        /*let mut new_list = List::new();
+
+        for value in value.into_rev() {
+            let MalVal::List(mut value) = value else {
+                new_list.push_front(value);
+                continue;
+            };
+
+            // Try take the first symbol
+            // if that fails just push the value to new_list
+            let Some(sym) = value.pop_front() else {
+                new_list.push_front(MalVal::List(value));
+                continue;
+            };
+            let MalVal::Sym(sym) = sym else {
+                value.push_front(sym);
+                let value = quasiquote(env, value)?;
+                new_list.push_front(env.eval_tco(value)?);
+                continue;
+            };
+
+            // Handle unquote/splice-unquote
+            if sym == "unquote" {
+                let [value] = take_exact(value)?;
+                let value = env.eval(value)?;
+                new_list.push_front(value);
+            } else if sym == "splice-unquote" {
+                let [value] = take_exact(value)?;
+                for val in to_iter(env.eval(value)?)?.rev() {
+                    new_list.push_front(val);
+                }
+            } else {
+                let value = quasiquote(env, value)?;
+                new_list.push_front(env.eval_tco(value)?);
+            }
+        }
+
+        Ok(TcoVal::Val(MalVal::List(new_list)))*/
+    }
+
+    fn try_take1_sym(mut args: List, s: &str) -> Result<List, List> {
+        let Some(first) = args.pop_front() else {
+            return Err(args);
+        };
+
+        if let MalVal::Sym(sym) = first {
+            if sym == s {
+                return Ok(args);
+            } else {
+                args.push_front(MalVal::Sym(sym));
+            }
+        } else {
+            args.push_front(first);
+        }
+
+        Err(args)
+    }
 
     pub fn r#let(env: &mut Env, args: List) -> TcoRet {
         let [bindings, body] = take_exact(args)?;
@@ -315,6 +424,9 @@ pub fn ds(data: &mut Env) {
     data.set_fn("list", ds::list);
     data.set_fn("vec", ds::vec);
 
+    data.set_fn("cons", ds::cons);
+    data.set_fn("concat", ds::concat);
+
     data.set_fn("count", ds::count);
 }
 
@@ -327,6 +439,42 @@ mod ds {
     };
 
     use super::take_exact;
+
+    pub fn cons(args: List) -> MalRet {
+        let [el, value] = take_exact(args)?;
+
+        let mut list = match value {
+            MalVal::List(list) => list,
+            MalVal::Vector(vec) => List::from_vec(vec),
+            _ => return Err(Error::UnexpectedType(MalVal::LIST_LIKE, value.type_name())),
+        };
+
+        list.push_front(el);
+
+        Ok(MalVal::List(list))
+    }
+
+    pub fn concat(args: List) -> MalRet {
+        let mut list = List::new();
+
+        for value in args.into_rev() {
+            match value {
+                MalVal::List(ls) => {
+                    for el in ls.into_rev() {
+                        list.push_front(el);
+                    }
+                }
+                MalVal::Vector(vec) => {
+                    for el in vec.into_iter().rev() {
+                        list.push_front(el);
+                    }
+                }
+                _ => return Err(Error::UnexpectedType(MalVal::LIST_LIKE, value.type_name())),
+            }
+        }
+
+        Ok(MalVal::List(list))
+    }
 
     pub fn map(args: List) -> MalRet {
         let mut args = args.into_iter();
@@ -462,11 +610,11 @@ fn to_sym(value: MalVal) -> Result<String, Error> {
     Ok(key)
 }
 
-fn to_iter(val: MalVal) -> Result<impl Iterator<Item = MalVal>, Error> {
+fn to_iter(val: MalVal) -> Result<ListLikeIter, Error> {
     match val {
         MalVal::List(list) => Ok(ListLikeIter::List(list.into_iter())),
         MalVal::Vector(vec) => Ok(ListLikeIter::Vector(vec.into_iter())),
-        _ => Err(Error::UnexpectedType("list-like", val.type_name())),
+        _ => Err(Error::UnexpectedType(MalVal::LIST_LIKE, val.type_name())),
     }
 }
 
@@ -521,6 +669,15 @@ impl Iterator for ListLikeIter {
         match self {
             ListLikeIter::List(list) => list.next(),
             ListLikeIter::Vector(vec) => vec.next(),
+        }
+    }
+}
+
+impl DoubleEndedIterator for ListLikeIter {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self {
+            ListLikeIter::List(list) => list.next_back(),
+            ListLikeIter::Vector(vec) => vec.next_back(),
         }
     }
 }

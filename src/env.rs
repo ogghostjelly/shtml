@@ -34,7 +34,15 @@ impl Env {
             Some(value) => Ok(value),
             None => match &self.outer {
                 Some(env) => env.get(key),
-                None => Err(Error::NotFound(key)),
+                None => {
+                    if key == "unquote" {
+                        Err(Error::OutsideOfQuasiquote("unquote"))
+                    } else if key == "unquote-splice" {
+                        Err(Error::OutsideOfQuasiquote("unquote-splice"))
+                    } else {
+                        Err(Error::NotFound(key))
+                    }
+                }
             },
         }
     }
@@ -67,6 +75,13 @@ impl Env {
         }
     }
 
+    pub fn eval_tco(&mut self, tco: TcoVal) -> MalRet {
+        match tco {
+            TcoVal::Val(val) => Ok(val),
+            TcoVal::Unevaluated(val) => self.eval(val),
+        }
+    }
+
     fn eval_in(&mut self, vals: Vec<MalVal>) -> Result<Vec<MalVal>, Error> {
         let mut ret = Vec::with_capacity(vals.len());
         for value in vals {
@@ -84,7 +99,7 @@ impl Env {
 
         match op {
             MalVal::BuiltinFn(f) => {
-                f(List::from_inner(self.eval_in(vals.into_inner())?)).map(TcoVal::Val)
+                f(List::from_rev(self.eval_in(vals.into_rev())?)).map(TcoVal::Val)
             }
             MalVal::Fn {
                 outer,
@@ -178,4 +193,6 @@ pub enum Error {
     AtleastArityMismatch(usize, usize),
     #[error("cannot have more binds after variadic '&'")]
     BindsAfterRest,
+    #[error("symbol not found '{0}' cannot be used outside of quasiquote")]
+    OutsideOfQuasiquote(&'static str),
 }
