@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{env::current_dir, rc::Rc};
 
 use clap::Parser as _;
 use colored::Colorize as _;
@@ -8,7 +8,7 @@ use shtml::{
     env::Env,
     ns,
     reader::{self, Location},
-    types::Context,
+    types::CallContext,
 };
 
 fn main() {
@@ -37,7 +37,7 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let loc = Location::new(Rc::new("repl".into()), 1, 1);
-    let src = Context::repl();
+    let src = CallContext::repl(current_dir()?);
 
     loop {
         match rl.readline("user> ") {

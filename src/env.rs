@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::{
     reader::Location,
-    types::{Context, List, MalData, MalFn, MalVal},
+    types::{CallContext, List, MalData, MalFn, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -41,7 +41,7 @@ impl Env {
         &mut self,
         loc: Location,
         key: impl Into<String>,
-        value: fn(&Context, (List, Location)) -> MalRet,
+        value: fn(&CallContext, (List, Location)) -> MalRet,
     ) {
         let key = key.into();
         self.set(
@@ -57,7 +57,7 @@ impl Env {
         &mut self,
         loc: Location,
         key: impl Into<String>,
-        value: fn(&Context, &mut Env, (List, Location)) -> TcoRet,
+        value: fn(&CallContext, &mut Env, (List, Location)) -> TcoRet,
     ) {
         let key = key.into();
         self.set(
@@ -90,7 +90,7 @@ impl Env {
         }
     }
 
-    pub fn eval(&mut self, ctx: &Context, mut ast: MalData) -> MalRet {
+    pub fn eval(&mut self, ctx: &CallContext, mut ast: MalData) -> MalRet {
         loop {
             match ast.value {
                 MalVal::List(list) => match self.eval_list((list, ast.loc), ctx)? {
@@ -122,14 +122,14 @@ impl Env {
         }
     }
 
-    pub fn eval_tco(&mut self, source: &Context, tco: TcoVal) -> MalRet {
+    pub fn eval_tco(&mut self, source: &CallContext, tco: TcoVal) -> MalRet {
         match tco {
             TcoVal::Val(val) => Ok(val),
             TcoVal::Unevaluated(val) => self.eval(source, val),
         }
     }
 
-    fn eval_in(&mut self, ctx: &Context, vals: Vec<MalData>) -> Result<Vec<MalData>, Error> {
+    fn eval_in(&mut self, ctx: &CallContext, vals: Vec<MalData>) -> Result<Vec<MalData>, Error> {
         let mut ret = Vec::with_capacity(vals.len());
         for value in vals {
             ret.push(self.eval(ctx, value)?);
@@ -137,7 +137,7 @@ impl Env {
         Ok(ret)
     }
 
-    fn eval_list(&mut self, (mut vals, loc): (List, Location), ctx: &Context) -> TcoRet {
+    fn eval_list(&mut self, (mut vals, loc): (List, Location), ctx: &CallContext) -> TcoRet {
         let Some(op) = vals.pop_front() else {
             return Ok(TcoVal::Val(MalVal::List(vals).with_loc(loc)));
         };

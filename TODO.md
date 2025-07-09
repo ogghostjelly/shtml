@@ -1,1 +1,2 @@
+- [ ] Include more context in errors, like the 'name'
 - [ ] Add <@a> syntax

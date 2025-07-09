@@ -1,4 +1,9 @@
-use std::{iter, slice, vec};
+use std::{
+    iter,
+    path::{Path, PathBuf},
+    rc::Rc,
+    slice, vec,
+};
 
 use indexmap::IndexMap;
 
@@ -14,30 +19,6 @@ pub struct MalData {
     pub loc: Location,
 }
 
-pub struct Context {
-    name: String,
-}
-
-impl Context {
-    pub fn with_name(&self, name: String) -> Context {
-        Context { name }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn repl() -> Self {
-        Self {
-            name: "repl".into(),
-        }
-    }
-
-    pub fn std() -> Self {
-        Self { name: "std".into() }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum MalVal {
     List(List),
@@ -49,8 +30,11 @@ pub enum MalVal {
     Int(i64),
     Float(f64),
     Bool(bool),
-    BuiltinFn(String, fn(&Context, (List, Location)) -> MalRet),
-    Special(String, fn(&Context, &mut Env, (List, Location)) -> TcoRet),
+    BuiltinFn(String, fn(&CallContext, (List, Location)) -> MalRet),
+    Special(
+        String,
+        fn(&CallContext, &mut Env, (List, Location)) -> TcoRet,
+    ),
     Fn(MalFn),
 }
 
@@ -260,6 +244,81 @@ impl MalKey {
             MalKey::Kwd(value) => MalVal::Kwd(value),
             MalKey::Str(value) => MalVal::Str(value),
             MalKey::Sym(value) => MalVal::Sym(value),
+        }
+    }
+}
+
+pub struct CallContext {
+    /// The current file that is executing the function.
+    file: Option<Rc<PathBuf>>,
+    dir: Option<DirContext>,
+    /// The name of the function being called.
+    name: String,
+}
+
+#[derive(Clone)]
+pub struct DirContext {
+    /// The directory to use when accessing relative file paths.
+    dir: Rc<PathBuf>,
+    /// The directory to use when accessing absolute file paths.
+    root: Rc<PathBuf>,
+}
+
+impl DirContext {
+    pub fn canonicalize(&self, path: &Path) -> Option<PathBuf> {
+        if path.is_absolute() {
+            match path.strip_prefix("/") {
+                Ok(path) => Some(self.root.join(path)),
+                Err(_) => None,
+            }
+        } else {
+            Some(self.dir.join(path))
+        }
+    }
+}
+
+impl CallContext {
+    pub fn with_name(&self, name: String) -> CallContext {
+        CallContext {
+            name,
+            file: self.file.clone(),
+            dir: self.dir.clone(),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn file(&self) -> Option<&Path> {
+        match &self.file {
+            Some(file) => Some(file),
+            None => None,
+        }
+    }
+
+    pub fn dir_context(&self) -> Option<&DirContext> {
+        self.dir.as_ref()
+    }
+
+    pub fn repl(dir: PathBuf) -> Self {
+        let dir = Rc::new(dir);
+
+        Self {
+            name: "repl".into(),
+            file: None,
+            dir: Some(DirContext {
+                root: Rc::clone(&dir),
+                dir,
+            }),
+        }
+    }
+
+    pub fn std() -> Self {
+        Self {
+            name: "std".into(),
+            file: None,
+            dir: None,
         }
     }
 }

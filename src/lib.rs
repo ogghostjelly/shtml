@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use reader::Location;
 use types::MalData;
 
@@ -55,4 +57,8 @@ pub enum ErrorKind {
     IndexOutOfRange(i64, usize),
     #[error("cannot use 'first' on an empty list")]
     FirstOfEmptyList,
+    #[error("denied access to filesystem, you cannot use the filesystem functions")]
+    DeniedFsAccess,
+    #[error("invalid path '{}'", _0.display())]
+    InvalidPath(PathBuf),
 }
