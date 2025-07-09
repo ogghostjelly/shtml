@@ -14,6 +14,30 @@ pub struct MalData {
     pub loc: Location,
 }
 
+pub struct Context {
+    name: String,
+}
+
+impl Context {
+    pub fn with_name(&self, name: String) -> Context {
+        Context { name }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn repl() -> Self {
+        Self {
+            name: "repl".into(),
+        }
+    }
+
+    pub fn std() -> Self {
+        Self { name: "std".into() }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum MalVal {
     List(List),
@@ -25,8 +49,8 @@ pub enum MalVal {
     Int(i64),
     Float(f64),
     Bool(bool),
-    BuiltinFn(String, fn(Location, List) -> MalRet),
-    Special(String, fn(&mut Env, Location, List) -> TcoRet),
+    BuiltinFn(String, fn(&Context, (List, Location)) -> MalRet),
+    Special(String, fn(&Context, &mut Env, (List, Location)) -> TcoRet),
     Fn(MalFn),
 }
 

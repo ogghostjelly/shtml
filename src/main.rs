@@ -8,6 +8,7 @@ use shtml::{
     env::Env,
     ns,
     reader::{self, Location},
+    types::Context,
 };
 
 fn main() {
@@ -35,15 +36,16 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
         data
     };
 
+    let loc = Location::new(Rc::new("repl".into()), 1, 1);
+    let src = Context::repl();
+
     loop {
         match rl.readline("user> ") {
             Ok(input) => {
                 let _ = rl.add_history_entry(&input);
 
-                let loc = Location::new(Rc::new("repl".into()), 1, 1);
-
-                match reader::parse(loc, &input) {
-                    Ok(Some(value)) => match env.eval(value) {
+                match reader::parse(loc.clone(), &input) {
+                    Ok(Some(value)) => match env.eval(&src, value) {
                         Ok(value) => println!("> {}", value.value),
                         Err(e) => println!("{e}"),
                     },

@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::{
     reader::Location,
-    types::{List, MalData, MalFn, MalVal},
+    types::{Context, List, MalData, MalFn, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -41,7 +41,7 @@ impl Env {
         &mut self,
         loc: Location,
         key: impl Into<String>,
-        value: fn(Location, List) -> MalRet,
+        value: fn(&Context, (List, Location)) -> MalRet,
     ) {
         let key = key.into();
         self.set(
@@ -57,7 +57,7 @@ impl Env {
         &mut self,
         loc: Location,
         key: impl Into<String>,
-        value: fn(&mut Env, Location, List) -> TcoRet,
+        value: fn(&Context, &mut Env, (List, Location)) -> TcoRet,
     ) {
         let key = key.into();
         self.set(
@@ -76,36 +76,36 @@ impl Env {
                 Some(env) => env.get(loc, key),
                 None => {
                     if key == "unquote" {
-                        Err(Error::new(loc, ErrorKind::OutsideOfQuasiquote("unquote")))
+                        Err(Error::new(ErrorKind::OutsideOfQuasiquote("unquote"), loc))
                     } else if key == "unquote-splice" {
                         Err(Error::new(
-                            loc,
                             ErrorKind::OutsideOfQuasiquote("unquote-splice"),
+                            loc,
                         ))
                     } else {
-                        Err(Error::new(loc, ErrorKind::NotFound(key)))
+                        Err(Error::new(ErrorKind::NotFound(key), loc))
                     }
                 }
             },
         }
     }
 
-    pub fn eval(&mut self, mut ast: MalData) -> MalRet {
+    pub fn eval(&mut self, ctx: &Context, mut ast: MalData) -> MalRet {
         loop {
             match ast.value {
-                MalVal::List(list) => match self.eval_list(ast.loc, list)? {
+                MalVal::List(list) => match self.eval_list((list, ast.loc), ctx)? {
                     TcoVal::Val(val) => return Ok(val),
                     TcoVal::Unevaluated(val) => ast = val,
                 },
                 MalVal::Vector(vec) => {
                     return self
-                        .eval_in(vec)
+                        .eval_in(ctx, vec)
                         .map(|v| MalVal::Vector(v).with_loc(ast.loc))
                 }
                 MalVal::Map(map) => {
                     let mut ret = IndexMap::with_capacity(map.len());
                     for (key, value) in map.into_iter() {
-                        ret.insert(key, self.eval(value)?);
+                        ret.insert(key, self.eval(ctx, value)?);
                     }
                     return Ok(MalVal::Map(ret).with_loc(ast.loc));
                 }
@@ -122,32 +122,34 @@ impl Env {
         }
     }
 
-    pub fn eval_tco(&mut self, tco: TcoVal) -> MalRet {
+    pub fn eval_tco(&mut self, source: &Context, tco: TcoVal) -> MalRet {
         match tco {
             TcoVal::Val(val) => Ok(val),
-            TcoVal::Unevaluated(val) => self.eval(val),
+            TcoVal::Unevaluated(val) => self.eval(source, val),
         }
     }
 
-    fn eval_in(&mut self, vals: Vec<MalData>) -> Result<Vec<MalData>, Error> {
+    fn eval_in(&mut self, ctx: &Context, vals: Vec<MalData>) -> Result<Vec<MalData>, Error> {
         let mut ret = Vec::with_capacity(vals.len());
         for value in vals {
-            ret.push(self.eval(value)?);
+            ret.push(self.eval(ctx, value)?);
         }
         Ok(ret)
     }
 
-    fn eval_list(&mut self, loc: Location, mut vals: List) -> TcoRet {
+    fn eval_list(&mut self, (mut vals, loc): (List, Location), ctx: &Context) -> TcoRet {
         let Some(op) = vals.pop_front() else {
             return Ok(TcoVal::Val(MalVal::List(vals).with_loc(loc)));
         };
 
-        let op = self.eval(op)?;
+        let op = self.eval(ctx, op)?;
 
         match op.value {
-            MalVal::BuiltinFn(_, f) => {
-                f(loc, List::from_rev(self.eval_in(vals.into_rev())?)).map(TcoVal::Val)
-            }
+            MalVal::BuiltinFn(name, f) => f(
+                &ctx.with_name(name),
+                (List::from_rev(self.eval_in(ctx, vals.into_rev())?), loc),
+            )
+            .map(TcoVal::Val),
             MalVal::Fn(MalFn {
                 name,
                 is_macro,
@@ -156,17 +158,19 @@ impl Env {
                 bind_rest,
                 body,
             }) => {
+                let ctx = &ctx.with_name(name.unwrap_or_else(|| "lambda".to_string()));
+
                 let bind_rest = match &bind_rest {
                     Some(bind) => bind.as_ref(),
                     None => {
                         if binds.len() != vals.len() {
                             return Err(Error::new(
-                                loc,
                                 ErrorKind::ArityMismatch(
                                     binds.len(),
                                     vals.len(),
-                                    name.unwrap_or_else(|| "lambda".to_string()),
+                                    ctx.name().to_string(),
                                 ),
+                                loc,
                             ));
                         }
                         None
@@ -178,7 +182,11 @@ impl Env {
                 let mut vals = vals.into_iter();
 
                 for (key, value) in bindings.zip(&mut vals) {
-                    let value = if is_macro { value } else { self.eval(value)? };
+                    let value = if is_macro {
+                        value
+                    } else {
+                        self.eval(ctx, value)?
+                    };
                     env.set(key, value)
                 }
 
@@ -186,7 +194,11 @@ impl Env {
                     let mut ls = vec![];
 
                     for value in vals {
-                        let value = if is_macro { value } else { self.eval(value)? };
+                        let value = if is_macro {
+                            value
+                        } else {
+                            self.eval(ctx, value)?
+                        };
                         ls.push(value)
                     }
 
@@ -198,20 +210,20 @@ impl Env {
                 let mut last = *body.0;
 
                 for value in body.1.into_iter() {
-                    env.eval(last)?;
+                    env.eval(ctx, last)?;
                     last = value;
                 }
 
                 Ok(if is_macro {
-                    TcoVal::Unevaluated(env.eval(last)?)
+                    TcoVal::Unevaluated(env.eval(ctx, last)?)
                 } else {
                     // Returning Val instead of Unevaluated might make TCO completely useless
                     // but it needs to happen since `last` has to be evaluated in the `env` environment
                     // I have no idea if this is a bad idea or not ;-;
-                    TcoVal::Val(env.eval(last)?)
+                    TcoVal::Val(env.eval(ctx, last)?)
                 })
             }
-            MalVal::Special(_, f) => f(self, loc, vals),
+            MalVal::Special(_, f) => f(ctx, self, (vals, loc)),
             MalVal::List(_)
             | MalVal::Vector(_)
             | MalVal::Map(_)
@@ -220,7 +232,7 @@ impl Env {
             | MalVal::Kwd(_)
             | MalVal::Int(_)
             | MalVal::Float(_)
-            | MalVal::Bool(_) => Err(Error::new(loc, ErrorKind::CannotApply(op.type_name()))),
+            | MalVal::Bool(_) => Err(Error::new(ErrorKind::CannotApply(op.type_name()), loc)),
         }
     }
 }

@@ -18,8 +18,8 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new(loc: Location, kind: ErrorKind) -> Self {
-        Self { loc, kind }
+    pub fn new(kind: ErrorKind, loc: Location) -> Self {
+        Self { kind, loc }
     }
 }
 

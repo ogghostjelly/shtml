@@ -1,5 +1,4 @@
 use std::fmt;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use derive_more::Display;
@@ -51,19 +50,19 @@ pub enum Element {
 }
 
 #[derive(Display, Debug, Clone, PartialEq)]
-#[display("{line}:{col} in {}", file.display())]
+#[display("{line}:{col} in {file}")]
 pub struct Location {
-    file: Rc<PathBuf>,
+    file: Rc<String>,
     line: usize,
     col: usize,
 }
 
 impl Location {
-    pub fn new(file: Rc<PathBuf>, line: usize, col: usize) -> Self {
+    pub fn new(file: Rc<String>, line: usize, col: usize) -> Self {
         Self { file, line, col }
     }
 
-    pub fn file(file: impl Into<PathBuf>) -> Self {
+    pub fn file(file: impl Into<String>) -> Self {
         Self {
             file: Rc::new(file.into()),
             line: 1,
@@ -75,9 +74,9 @@ impl Location {
 #[macro_export]
 macro_rules! loc {
     () => {{
-        use std::{path::PathBuf, rc::Rc};
+        use std::rc::Rc;
         $crate::reader::Location::new(
-            Rc::new(PathBuf::from(file!())),
+            Rc::new(file!().into()),
             line!() as usize,
             column!() as usize,
         )
