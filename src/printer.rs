@@ -15,15 +15,15 @@ fn display(value: &MalVal, f: &mut fmt::Formatter<'_>, mut quote: bool) -> fmt::
                 write!(f, "'")?;
                 quote = true;
             };
-            join_vals(f, "(", ")", vals.iter(), quote)
+            join_vals(f, "(", ")", vals.iter().map(|x| &x.value), quote)
         }
-        MalVal::Vector(vals) => join_vals(f, "[", "]", vals.iter(), quote),
+        MalVal::Vector(vals) => join_vals(f, "[", "]", vals.iter().map(|x| &x.value), quote),
         MalVal::Map(map) => join_vals(
             f,
             "{",
             "}",
             map.iter()
-                .map(|(key, value)| (key.clone().into_value(), value))
+                .map(|(key, value)| (key.clone().into_value(), &value.value))
                 .collect::<Vec<_>>()
                 .iter()
                 .flat_map(|(x, y)| [x, y]),

@@ -1,2 +1,2 @@
-- [ ] Store (file, line, col) for better error reporting
 - [ ] Add <@a> syntax
+- [ ] Try make MalVal uncloneable

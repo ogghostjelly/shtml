@@ -1,15 +1,19 @@
 use std::collections::HashMap;
 
-use crate::types::{List, MalFn, MalRet, MalVal, TcoRet};
+use crate::{
+    reader::Location,
+    types::{List, MalData, MalFn, MalVal},
+    Error, ErrorKind, MalRet,
+};
 
 #[derive(Clone, Debug)]
 pub struct Env {
-    data: HashMap<String, MalVal>,
+    data: HashMap<String, MalData>,
     outer: Option<Box<Env>>,
 }
 
 impl Env {
-    pub fn new(data: HashMap<String, MalVal>, outer: Option<Box<Env>>) -> Self {
+    pub fn new(data: HashMap<String, MalData>, outer: Option<Box<Env>>) -> Self {
         Self { data, outer }
     }
 
@@ -21,54 +25,83 @@ impl Env {
         Self::new(HashMap::new(), Some(Box::new(env.clone())))
     }
 
-    pub fn set(&mut self, key: impl Into<String>, value: MalVal) {
+    pub fn set(&mut self, key: impl Into<String>, value: MalData) {
         self.data.insert(key.into(), value);
     }
 
-    pub fn set_fn(&mut self, key: impl Into<String>, value: fn(List) -> MalRet) {
+    pub fn set_fn(
+        &mut self,
+        loc: Location,
+        key: impl Into<String>,
+        value: fn(Location, List) -> MalRet,
+    ) {
         let key = key.into();
-        self.set(key.clone(), MalVal::BuiltinFn(key, value))
+        self.set(
+            key.clone(),
+            MalData {
+                value: MalVal::BuiltinFn(key, value),
+                loc,
+            },
+        )
     }
 
-    pub fn set_special(&mut self, key: impl Into<String>, value: fn(&mut Env, List) -> TcoRet) {
+    pub fn set_special(
+        &mut self,
+        loc: Location,
+        key: impl Into<String>,
+        value: fn(&mut Env, Location, List) -> TcoRet,
+    ) {
         let key = key.into();
-        self.set(key.clone(), MalVal::Special(key, value));
+        self.set(
+            key.clone(),
+            MalData {
+                value: MalVal::Special(key, value),
+                loc,
+            },
+        );
     }
 
-    pub fn get(&self, key: String) -> Result<&MalVal, Error> {
+    pub fn get(&self, loc: Location, key: String) -> Result<&MalData, Error> {
         match self.data.get(&key) {
             Some(value) => Ok(value),
             None => match &self.outer {
-                Some(env) => env.get(key),
+                Some(env) => env.get(loc, key),
                 None => {
                     if key == "unquote" {
-                        Err(Error::OutsideOfQuasiquote("unquote"))
+                        Err(Error::new(loc, ErrorKind::OutsideOfQuasiquote("unquote")))
                     } else if key == "unquote-splice" {
-                        Err(Error::OutsideOfQuasiquote("unquote-splice"))
+                        Err(Error::new(
+                            loc,
+                            ErrorKind::OutsideOfQuasiquote("unquote-splice"),
+                        ))
                     } else {
-                        Err(Error::NotFound(key))
+                        Err(Error::new(loc, ErrorKind::NotFound(key)))
                     }
                 }
             },
         }
     }
 
-    pub fn eval(&mut self, mut ast: MalVal) -> MalRet {
+    pub fn eval(&mut self, mut ast: MalData) -> MalRet {
         loop {
-            match ast {
-                MalVal::List(list) => match self.eval_list(list)? {
+            match ast.value {
+                MalVal::List(list) => match self.eval_list(ast.loc, list)? {
                     TcoVal::Val(val) => return Ok(val),
                     TcoVal::Unevaluated(val) => ast = val,
                 },
-                MalVal::Vector(vec) => return self.eval_in(vec).map(MalVal::Vector),
+                MalVal::Vector(vec) => {
+                    return self
+                        .eval_in(vec)
+                        .map(|v| MalVal::Vector(v).with_loc(ast.loc))
+                }
                 MalVal::Map(map) => {
                     let mut ret = HashMap::with_capacity(map.len());
                     for (key, value) in map.into_iter() {
                         ret.insert(key, self.eval(value)?);
                     }
-                    return Ok(MalVal::Map(ret));
+                    return Ok(MalVal::Map(ret).with_loc(ast.loc));
                 }
-                MalVal::Sym(sym) => return self.get(sym).cloned(),
+                MalVal::Sym(sym) => return self.get(ast.loc, sym).cloned(),
                 MalVal::Str(_)
                 | MalVal::BuiltinFn(_, _)
                 | MalVal::Fn { .. }
@@ -88,7 +121,7 @@ impl Env {
         }
     }
 
-    fn eval_in(&mut self, vals: Vec<MalVal>) -> Result<Vec<MalVal>, Error> {
+    fn eval_in(&mut self, vals: Vec<MalData>) -> Result<Vec<MalData>, Error> {
         let mut ret = Vec::with_capacity(vals.len());
         for value in vals {
             ret.push(self.eval(value)?);
@@ -96,16 +129,16 @@ impl Env {
         Ok(ret)
     }
 
-    fn eval_list(&mut self, mut vals: List) -> TcoRet {
+    fn eval_list(&mut self, loc: Location, mut vals: List) -> TcoRet {
         let Some(op) = vals.pop_front() else {
-            return Ok(TcoVal::Val(MalVal::List(vals)));
+            return Ok(TcoVal::Val(MalVal::List(vals).with_loc(loc)));
         };
 
         let op = self.eval(op)?;
 
-        match op {
+        match op.value {
             MalVal::BuiltinFn(_, f) => {
-                f(List::from_rev(self.eval_in(vals.into_rev())?)).map(TcoVal::Val)
+                f(loc, List::from_rev(self.eval_in(vals.into_rev())?)).map(TcoVal::Val)
             }
             MalVal::Fn(MalFn {
                 name,
@@ -119,10 +152,13 @@ impl Env {
                     Some(bind) => bind.as_ref(),
                     None => {
                         if binds.len() != vals.len() {
-                            return Err(Error::ArityMismatch(
-                                binds.len(),
-                                vals.len(),
-                                name.unwrap_or_else(|| "lambda".to_string()),
+                            return Err(Error::new(
+                                loc,
+                                ErrorKind::ArityMismatch(
+                                    binds.len(),
+                                    vals.len(),
+                                    name.unwrap_or_else(|| "lambda".to_string()),
+                                ),
                             ));
                         }
                         None
@@ -146,8 +182,8 @@ impl Env {
                         ls.push(value)
                     }
 
-                    if let Some(key) = bind_rest {
-                        env.set(key.clone(), MalVal::List(List::from_vec(ls)))
+                    if let Some((loc, key)) = bind_rest.cloned() {
+                        env.set(key, MalVal::List(List::from_vec(ls)).with_loc(loc))
                     }
                 }
 
@@ -167,7 +203,7 @@ impl Env {
                     TcoVal::Val(env.eval(last)?)
                 })
             }
-            MalVal::Special(_, f) => f(self, vals),
+            MalVal::Special(_, f) => f(self, loc, vals),
             MalVal::List(_)
             | MalVal::Vector(_)
             | MalVal::Map(_)
@@ -176,46 +212,14 @@ impl Env {
             | MalVal::Kwd(_)
             | MalVal::Int(_)
             | MalVal::Float(_)
-            | MalVal::Bool(_) => Err(Error::CannotApply(op.type_name())),
+            | MalVal::Bool(_) => Err(Error::new(loc, ErrorKind::CannotApply(op.type_name()))),
         }
     }
 }
 
-pub enum TcoVal {
-    Val(MalVal),
-    Unevaluated(MalVal),
-}
+pub type TcoRet = Result<TcoVal, Error>;
 
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("symbol not found '{0}'")]
-    NotFound(String),
-    #[error("cannot apply '{0}'")]
-    CannotApply(&'static str),
-    #[error("cannot use '{op}' on '{fst}' and '{snd}'")]
-    InvalidOperation {
-        op: &'static str,
-        fst: &'static str,
-        snd: &'static str,
-    },
-    #[error("cannot use '{0}' on '{1}'")]
-    InvalidOperation1(&'static str, &'static str),
-    #[error("expected type '{0}' but got '{1}' in {2}")]
-    UnexpectedType(&'static str, &'static str, String),
-    #[error("'{0}' expects an even number of arguments")]
-    UnevenArguments(&'static str),
-    #[error("'{0}' cannot be a map key")]
-    InvalidMapKey(&'static str),
-    #[error("expected {0} arguments but got {1} in {2}")]
-    ArityMismatch(usize, usize, String),
-    #[error("expected at least {0} arguments but got {1} in {2}")]
-    AtleastArityMismatch(usize, usize, String),
-    #[error("cannot have more binds after variadic '&'")]
-    BindsAfterRest,
-    #[error("symbol not found '{0}' cannot be used outside of quasiquote")]
-    OutsideOfQuasiquote(&'static str),
-    #[error("index out of range {0} for list of size {1}")]
-    IndexOutOfRange(i64, usize),
-    #[error("cannot use 'first' on an empty list")]
-    FirstOfEmptyList,
+pub enum TcoVal {
+    Val(MalData),
+    Unevaluated(MalData),
 }

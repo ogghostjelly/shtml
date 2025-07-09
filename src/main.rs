@@ -1,10 +1,13 @@
+use std::rc::Rc;
+
 use clap::Parser as _;
 use colored::Colorize as _;
 use rustyline::{error::ReadlineError, Editor};
 use shtml::{
     cli::{Cli, Commands, ProjectPath},
     env::Env,
-    ns, reader,
+    ns,
+    reader::{self, Location},
 };
 
 fn main() {
@@ -37,9 +40,11 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
             Ok(input) => {
                 let _ = rl.add_history_entry(&input);
 
-                match reader::parse(&input) {
+                let loc = Location::new(Rc::new("repl".into()), 1, 1);
+
+                match reader::parse(loc, &input) {
                     Ok(Some(value)) => match env.eval(value) {
-                        Ok(value) => println!("> {value}"),
+                        Ok(value) => println!("> {}", value.value),
                         Err(e) => println!("{e}"),
                     },
                     Ok(None) => {}
