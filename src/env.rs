@@ -69,21 +69,26 @@ impl Env {
         );
     }
 
-    pub fn get(&self, loc: Location, key: String) -> Result<&MalData, Error> {
+    pub fn get(&self, ctx: &CallContext, loc: Location, key: String) -> Result<&MalData, Error> {
         match self.data.get(&key) {
             Some(value) => Ok(value),
             None => match &self.outer {
-                Some(env) => env.get(loc, key),
+                Some(env) => env.get(ctx, loc, key),
                 None => {
                     if key == "unquote" {
-                        Err(Error::new(ErrorKind::OutsideOfQuasiquote("unquote"), loc))
+                        Err(Error::new(
+                            ErrorKind::OutsideOfQuasiquote("unquote"),
+                            ctx,
+                            loc,
+                        ))
                     } else if key == "unquote-splice" {
                         Err(Error::new(
                             ErrorKind::OutsideOfQuasiquote("unquote-splice"),
+                            ctx,
                             loc,
                         ))
                     } else {
-                        Err(Error::new(ErrorKind::NotFound(key), loc))
+                        Err(Error::new(ErrorKind::NotFound(key), ctx, loc))
                     }
                 }
             },
@@ -93,7 +98,7 @@ impl Env {
     pub fn eval(&mut self, ctx: &CallContext, mut ast: MalData) -> MalRet {
         loop {
             match ast.value {
-                MalVal::List(list) => match self.eval_list((list, ast.loc), ctx)? {
+                MalVal::List(list) => match self.eval_list(ctx, (list, ast.loc))? {
                     TcoVal::Val(val) => return Ok(val),
                     TcoVal::Unevaluated(val) => ast = val,
                 },
@@ -109,7 +114,7 @@ impl Env {
                     }
                     return Ok(MalVal::Map(ret).with_loc(ast.loc));
                 }
-                MalVal::Sym(sym) => return self.get(ast.loc, sym).cloned(),
+                MalVal::Sym(sym) => return self.get(ctx, ast.loc, sym).cloned(),
                 MalVal::Str(_)
                 | MalVal::BuiltinFn(_, _)
                 | MalVal::Fn { .. }
@@ -137,7 +142,7 @@ impl Env {
         Ok(ret)
     }
 
-    fn eval_list(&mut self, (mut vals, loc): (List, Location), ctx: &CallContext) -> TcoRet {
+    fn eval_list(&mut self, ctx: &CallContext, (mut vals, loc): (List, Location)) -> TcoRet {
         let Some(op) = vals.pop_front() else {
             return Ok(TcoVal::Val(MalVal::List(vals).with_loc(loc)));
         };
@@ -146,7 +151,7 @@ impl Env {
 
         match op.value {
             MalVal::BuiltinFn(name, f) => f(
-                &ctx.with_name(name),
+                &ctx.new_frame((name, loc.clone())),
                 (List::from_rev(self.eval_in(ctx, vals.into_rev())?), loc),
             )
             .map(TcoVal::Val),
@@ -158,18 +163,16 @@ impl Env {
                 bind_rest,
                 body,
             }) => {
-                let ctx = &ctx.with_name(name.unwrap_or_else(|| "lambda".to_string()));
+                let ctx =
+                    &ctx.new_frame((name.unwrap_or_else(|| "lambda".to_string()), loc.clone()));
 
                 let bind_rest = match &bind_rest {
                     Some(bind) => bind.as_ref(),
                     None => {
                         if binds.len() != vals.len() {
                             return Err(Error::new(
-                                ErrorKind::ArityMismatch(
-                                    binds.len(),
-                                    vals.len(),
-                                    ctx.name().to_string(),
-                                ),
+                                ErrorKind::ArityMismatch(binds.len(), vals.len()),
+                                ctx,
                                 loc,
                             ));
                         }
@@ -232,7 +235,7 @@ impl Env {
             | MalVal::Kwd(_)
             | MalVal::Int(_)
             | MalVal::Float(_)
-            | MalVal::Bool(_) => Err(Error::new(ErrorKind::CannotApply(op.type_name()), loc)),
+            | MalVal::Bool(_) => Err(Error::new(ErrorKind::CannotApply(op.type_name()), ctx, loc)),
         }
     }
 }

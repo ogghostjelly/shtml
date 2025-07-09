@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 
 use reader::Location;
-use types::MalData;
+use types::{CallContext, MalData};
 
 pub mod cli;
 pub mod env;
@@ -13,15 +13,29 @@ pub mod types;
 pub type MalRet = Result<MalData, Error>;
 
 #[derive(thiserror::Error, Debug)]
-#[error("{kind} at {loc}")]
 pub struct Error {
     kind: ErrorKind,
     loc: Location,
+    frames: Vec<(String, Location)>,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} at {}", self.kind, self.loc)?;
+        for (name, loc) in self.frames.iter().rev() {
+            write!(f, "\n   in {name} at {loc}")?;
+        }
+        Ok(())
+    }
 }
 
 impl Error {
-    pub fn new(kind: ErrorKind, loc: Location) -> Self {
-        Self { kind, loc }
+    pub fn new(kind: ErrorKind, ctx: &CallContext, loc: Location) -> Self {
+        Self {
+            frames: ctx.frames(),
+            kind,
+            loc,
+        }
     }
 }
 
@@ -39,16 +53,16 @@ pub enum ErrorKind {
     },
     #[error("cannot use '{0}' on '{1}'")]
     InvalidOperation1(&'static str, &'static str),
-    #[error("expected type '{0}' but got '{1}' in {2}")]
-    UnexpectedType(&'static str, &'static str, String),
+    #[error("expected type '{0}' but got '{1}'")]
+    UnexpectedType(&'static str, &'static str),
     #[error("'{0}' expects an even number of arguments")]
     UnevenArguments(&'static str),
     #[error("'{0}' cannot be a map key")]
     InvalidMapKey(&'static str),
-    #[error("expected {0} arguments but got {1} in {2}")]
-    ArityMismatch(usize, usize, String),
-    #[error("expected at least {0} arguments but got {1} in {2}")]
-    AtleastArityMismatch(usize, usize, String),
+    #[error("expected {0} arguments but got {1}")]
+    ArityMismatch(usize, usize),
+    #[error("expected at least {0} arguments but got {1}")]
+    AtleastArityMismatch(usize, usize),
     #[error("cannot have more binds after variadic '&'")]
     BindsAfterRest,
     #[error("symbol not found '{0}' cannot be used outside of quasiquote")]

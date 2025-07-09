@@ -253,7 +253,8 @@ pub struct CallContext {
     file: Option<Rc<PathBuf>>,
     dir: Option<DirContext>,
     /// The name of the function being called.
-    name: String,
+    frame: Option<(String, Location)>,
+    frames: Vec<(String, Location)>,
 }
 
 #[derive(Clone)]
@@ -278,16 +279,25 @@ impl DirContext {
 }
 
 impl CallContext {
-    pub fn with_name(&self, name: String) -> CallContext {
+    pub fn new_frame(&self, frame: (String, Location)) -> CallContext {
         CallContext {
-            name,
+            frame: Some(frame),
+            frames: self.frames(),
             file: self.file.clone(),
             dir: self.dir.clone(),
         }
     }
 
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn frames(&self) -> Vec<(String, Location)> {
+        let mut frames = self.frames.clone();
+        if let Some(frame) = self.frame.clone() {
+            frames.push(frame);
+        }
+        frames
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.frame.as_ref().map(|(x, _)| x.as_str())
     }
 
     pub fn file(&self) -> Option<&Path> {
@@ -305,7 +315,8 @@ impl CallContext {
         let dir = Rc::new(dir);
 
         Self {
-            name: "repl".into(),
+            frame: None,
+            frames: vec![],
             file: None,
             dir: Some(DirContext {
                 root: Rc::clone(&dir),
@@ -316,7 +327,8 @@ impl CallContext {
 
     pub fn std() -> Self {
         Self {
-            name: "std".into(),
+            frame: Some(("std".into(), Location::new(Rc::new("lib.mal".into()), 1, 1))),
+            frames: vec![],
             file: None,
             dir: None,
         }
