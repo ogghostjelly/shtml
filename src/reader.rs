@@ -114,7 +114,7 @@ fn value(input: Span<'_>) -> TResult<'_, Option<MalData>> {
 
     let list = Map(list, Some);
     let vec = Map(vec, Some);
-    let map = Map(map, Some);
+    let map = Map(hash_map, Some);
     let list_like = or(or(list, vec), map);
 
     let shorthand = Map(shorthand, Some);
@@ -158,11 +158,11 @@ fn next_value(input: Span<'_>) -> TResult<'_, MalData> {
     }
 }
 
-fn map(input: Span<'_>) -> TResult<'_, MalData> {
+fn hash_map(input: Span<'_>) -> TResult<'_, MalData> {
     let loc = input.loc.clone();
     let (rest, ls) = ListLike("{", "}").parse(input)?;
     let mut ls = List::from_vec(ls);
-    ls.push_front(MalVal::Sym("map".into()).with_loc(loc.clone()));
+    ls.push_front(MalVal::Sym("hash-map".into()).with_loc(loc.clone()));
     Ok((rest, MalVal::List(ls).with_loc(loc)))
 }
 

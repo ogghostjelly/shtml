@@ -50,7 +50,7 @@ impl MalVal {
     pub const LIST: &str = "list";
     pub const VECTOR: &str = "vector";
     pub const LIST_LIKE: &str = "list-like";
-    pub const MAP: &str = "map";
+    pub const HASH_MAP: &str = "hash-map";
     pub const SYM: &str = "symbol";
     pub const STR: &str = "string";
     pub const KWD: &str = "keyword";
@@ -64,7 +64,7 @@ impl MalVal {
         match self {
             MalVal::List(_) => Self::LIST,
             MalVal::Vector(_) => Self::VECTOR,
-            MalVal::Map(_) => Self::MAP,
+            MalVal::Map(_) => Self::HASH_MAP,
             MalVal::Sym(_) => Self::SYM,
             MalVal::Str(_) => Self::STR,
             MalVal::Kwd(_) => Self::KWD,

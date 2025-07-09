@@ -423,7 +423,7 @@ mod cmp {
 }
 
 pub fn ds(data: &mut Env) {
-    data.set_fn(loc!(), "map", ds::map);
+    data.set_fn(loc!(), "hash-map", ds::hash_map);
     data.set_fn(loc!(), "list", ds::list);
     data.set_fn(loc!(), "vec", ds::vec);
 
@@ -506,13 +506,13 @@ mod ds {
         Ok(MalVal::List(list).with_loc(loc))
     }
 
-    pub fn map(loc: Location, args: List) -> MalRet {
+    pub fn hash_map(loc: Location, args: List) -> MalRet {
         let mut args = args.into_iter();
         let mut map = HashMap::with_capacity(args.len() / 2);
 
         while let Some(key) = args.next() {
             let Some(value) = args.next() else {
-                return Err(Error::new(loc, ErrorKind::UnevenArguments("map")));
+                return Err(Error::new(loc, ErrorKind::UnevenArguments("hash-map")));
             };
 
             let key = match MalKey::from_value(key.value) {
