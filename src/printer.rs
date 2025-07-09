@@ -85,9 +85,9 @@ fn join_vals<'a>(
 
 fn escape(input: &str) -> String {
     input
-        .replace("\r", "\\r")
-        .replace("\n", "\\n")
-        .replace("\t", "\\t")
-        .replace("\"", "\\\"")
-        .replace("\\", "\\\\")
+        .replace("\r", r#"\r"#)
+        .replace("\n", r#"\n"#)
+        .replace("\t", r#"\t"#)
+        .replace("\"", r#"\""#)
+        .replace("\\", r#"\\"#)
 }

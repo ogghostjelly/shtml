@@ -266,7 +266,12 @@ pub struct DirContext {
 }
 
 impl DirContext {
-    pub fn canonicalize(&self, path: &Path) -> Option<PathBuf> {
+    pub fn root(&self) -> Rc<PathBuf> {
+        Rc::clone(&self.root)
+    }
+
+    pub fn canonicalize<P: AsRef<Path>>(&self, path: P) -> Option<PathBuf> {
+        let path = path.as_ref();
         if path.is_absolute() {
             match path.strip_prefix("/") {
                 Ok(path) => Some(self.root.join(path)),
@@ -322,6 +327,23 @@ impl CallContext {
                 root: Rc::clone(&dir),
                 dir,
             }),
+        }
+    }
+
+    pub fn new(root: Rc<PathBuf>, file: PathBuf) -> Self {
+        let dir = file
+            .parent()
+            .expect("File must have a parent")
+            .to_path_buf();
+
+        Self {
+            dir: Some(DirContext {
+                dir: Rc::new(dir),
+                root,
+            }),
+            file: Some(Rc::new(file)),
+            frame: None,
+            frames: vec![],
         }
     }
 

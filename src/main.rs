@@ -45,11 +45,14 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = rl.add_history_entry(&input);
 
                 match reader::parse(loc.clone(), &input) {
-                    Ok(Some(value)) => match env.eval(&src, value) {
-                        Ok(value) => println!("> {}", value.value),
-                        Err(e) => println!("{e}"),
-                    },
-                    Ok(None) => {}
+                    Ok(vals) => {
+                        for value in vals {
+                            match env.eval(&src, value) {
+                                Ok(value) => println!("> {}", value.value),
+                                Err(e) => println!("{e}"),
+                            }
+                        }
+                    }
                     Err(e) => println!("{e}"),
                 };
             }

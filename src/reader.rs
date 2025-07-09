@@ -10,15 +10,29 @@ pub fn parse_file(loc: Location, input: &str) -> Result<Vec<Element>, Error> {
     shtml(Span { data: input, loc })
 }
 
-pub fn parse(loc: Location, input: &str) -> Result<Option<MalData>, Error> {
-    let (rest, value) = value(Span { data: input, loc })?;
-    let (rest, _) = rest.take_while(|ch| ch.is_whitespace());
-
-    if !rest.data.is_empty() {
-        return Err(rest.err(ErrorKind::UnexpectedEof));
+pub fn parse(loc: Location, input: &str) -> Result<Vec<MalData>, Error> {
+    if input.is_empty() {
+        return Ok(vec![]);
     }
 
-    Ok(value)
+    let mut list = Vec::new();
+    let mut input = Span { data: input, loc };
+
+    loop {
+        let (rest, value) = value(input)?;
+        if let Some(value) = value {
+            list.push(value);
+        }
+
+        let (rest, _) = rest.take_while(|ch| ch.is_whitespace());
+        if rest.data.is_empty() {
+            break;
+        }
+
+        input = rest;
+    }
+
+    Ok(list)
 }
 
 fn shtml(input: Span<'_>) -> Result<Vec<Element>, Error<'_>> {
@@ -538,8 +552,6 @@ enum ErrorKind {
     Symbol,
     Int(std::num::ParseIntError),
     Float(std::num::ParseFloatError),
-    #[display("unexpected eof")]
-    UnexpectedEof,
 }
 
 #[cfg(test)]

@@ -20,9 +20,9 @@ fn std_mal(data: &mut Env) {
     let ast = reader::parse(Location::file("std.mal"), include_str!("std.mal"))
         .expect("parsing 'lib.mal' should never fail");
 
-    if let Some(ast) = ast {
+    for value in ast {
         _ = data
-            .eval(&CallContext::std(), ast)
+            .eval(&CallContext::std(), value)
             .expect("evaluating 'lib.mal' should never fail")
     }
 }
@@ -52,12 +52,12 @@ mod sform {
     use super::{take_exact, to_list_like, to_sym};
 
     pub fn quote(ctx: &CallContext, _: &mut Env, (args, loc): (List, Location)) -> TcoRet {
-        let [value] = take_exact(ctx, loc, args)?;
+        let [value] = take_exact(ctx, &loc, args)?;
         Ok(TcoVal::Val(value))
     }
 
     pub fn quasiquote(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
-        let [args] = take_exact(ctx, loc.clone(), args)?;
+        let [args] = take_exact(ctx, &loc, args)?;
 
         let MalVal::List(args) = args.value else {
             return Ok(TcoVal::Val(args));
@@ -74,7 +74,7 @@ mod sform {
         let args = match try_take1_sym(list, "unquote") {
             Ok(args) => {
                 let ctx = ctx.new_frame(("unquote".into(), loc.clone()));
-                let [value] = take_exact(&ctx, loc, args)?;
+                let [value] = take_exact(&ctx, &loc, args)?;
                 return Ok(TcoVal::Unevaluated(value));
             }
             Err(args) => args,
@@ -91,7 +91,7 @@ mod sform {
             match try_take1_sym(value, "splice-unquote") {
                 Ok(args) => {
                     let ctx = ctx.new_frame(("unquote".into(), data.loc.clone()));
-                    let [value] = take_exact(&ctx, data.loc, args)?;
+                    let [value] = take_exact(&ctx, &data.loc, args)?;
                     let value = env.eval(&ctx, value)?;
                     for el in to_list_like(&ctx, value)? {
                         new_list.push_front(el);
@@ -104,7 +104,7 @@ mod sform {
             }
         }
 
-        Ok(TcoVal::Val(MalVal::List(new_list).with_loc(loc.clone())))
+        Ok(TcoVal::Val(MalVal::List(new_list).with_loc(loc)))
     }
 
     fn try_take1_sym(mut args: List, s: &str) -> Result<List, List> {
@@ -126,7 +126,7 @@ mod sform {
     }
 
     pub fn r#let(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
-        let [bindings, body] = take_exact(ctx, loc.clone(), args)?;
+        let [bindings, body] = take_exact(ctx, &loc, args)?;
         let mut bindings = to_list_like(ctx, bindings)?.into_iter();
 
         let mut env = Env::inner(env);
@@ -146,7 +146,7 @@ mod sform {
     }
 
     pub fn def(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
-        let [key, value] = take_exact(ctx, loc.clone(), args)?;
+        let [key, value] = take_exact(ctx, &loc, args)?;
         let key = to_sym(ctx, key)?;
         let mut value = env.eval(ctx, value)?;
 
@@ -177,7 +177,7 @@ mod sform {
     }
 
     pub fn r#if(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
-        let [cond, truthy, falsey] = take_exact(ctx, loc, args)?;
+        let [cond, truthy, falsey] = take_exact(ctx, &loc, args)?;
 
         if env.eval(ctx, cond)?.is_true() {
             Ok(TcoVal::Unevaluated(truthy))
@@ -187,7 +187,7 @@ mod sform {
     }
 
     pub fn r#fn(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
-        let ([bindings, first], rest) = take_atleast(ctx, loc.clone(), args)?;
+        let ([bindings, first], rest) = take_atleast(ctx, &loc, args)?;
 
         let mut binds: Vec<String> = vec![];
         let mut bind_rest: Option<Option<(Location, String)>> = None;
@@ -223,7 +223,7 @@ mod sform {
     }
 
     pub fn r#macro(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, loc.clone(), args)?;
+        let [value] = take_exact(ctx, &loc, args)?;
 
         let MalVal::Fn(mut f) = value.value else {
             return Err(Error::new(
@@ -249,54 +249,88 @@ mod fs {
     use std::{fs, path::PathBuf};
 
     use crate::{
+        env::Env,
         list,
-        ns::to_str,
+        ns::{self, to_str},
         reader::{self, Location},
-        types::{CallContext, List, MalVal},
+        types::{CallContext, DirContext, List, MalVal},
         Error, ErrorKind, MalRet,
     };
 
     use super::take_exact;
 
     pub fn load_mal(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let path = take_path(ctx, (args, loc.clone()))?;
+        let dir = take_dir_context(ctx, &loc)?;
+        let (rel_path, abs_path) = take_path(ctx, dir, (args, &loc))?;
 
-        let input = match fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(_) => todo!(),
+        let input = match fs::read_to_string(&abs_path) {
+            Ok(input) => input,
+            Err(e) => return Err(Error::new(ErrorKind::Io(e), ctx, loc)),
         };
 
-        match reader::parse(Location::file(path.to_string_lossy()), &input) {
-            Ok(Some(val)) => Ok(val),
-            Ok(None) => Ok(list!().with_loc(loc)),
-            Err(e) => todo!("{e}"),
+        let file_loc = Location::file(rel_path);
+
+        match reader::parse(file_loc.clone(), &input) {
+            Ok(vals) => {
+                let mut vals = List::from_vec(vals);
+                vals.push_front(MalVal::Sym("do".into()).with_loc(file_loc.clone()));
+
+                let ctx = CallContext::new(dir.root(), abs_path);
+
+                let mut env = {
+                    let mut data = Env::empty();
+                    ns::std(&mut data);
+                    data
+                };
+
+                env.eval(&ctx, MalVal::List(vals).with_loc(file_loc))
+            }
+            Err(e) => Err(Error::new(ErrorKind::Parse(e.to_string()), ctx, loc)),
         }
     }
 
     pub fn read_file(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        match fs::read_to_string(take_path(ctx, (args, loc.clone()))?) {
+        let dir = take_dir_context(ctx, &loc)?;
+        let (_, path) = take_path(ctx, dir, (args, &loc))?;
+
+        match fs::read_to_string(path) {
             Ok(s) => Ok(MalVal::Str(s).with_loc(loc)),
             Err(e) => todo!("{e}"),
         }
     }
 
-    fn take_path(ctx: &CallContext, (args, loc): (List, Location)) -> Result<PathBuf, Error> {
+    fn take_dir_context<'ctx>(
+        ctx: &'ctx CallContext,
+        loc: &Location,
+    ) -> Result<&'ctx DirContext, Error> {
         let Some(dir) = ctx.dir_context() else {
-            return Err(Error::new(ErrorKind::DeniedFsAccess, ctx, loc));
+            return Err(Error::new(ErrorKind::DeniedFsAccess, ctx, loc.clone()));
         };
 
-        let [value] = take_exact(ctx, loc.clone(), args)?;
-        let path = PathBuf::from(to_str(ctx, value)?);
+        Ok(dir)
+    }
 
-        let Some(path) = dir.canonicalize(&path) else {
-            return Err(Error::new(ErrorKind::InvalidPath(path), ctx, loc));
+    fn take_path(
+        ctx: &CallContext,
+        dir: &DirContext,
+        (args, loc): (List, &Location),
+    ) -> Result<(String, PathBuf), Error> {
+        let [value] = take_exact(ctx, loc, args)?;
+        let rel_path = to_str(ctx, value)?;
+
+        let Some(abs_path) = dir.canonicalize(&rel_path) else {
+            return Err(Error::new(
+                ErrorKind::InvalidPath(rel_path.into()),
+                ctx,
+                loc.clone(),
+            ));
         };
 
-        Ok(path)
+        Ok((rel_path, abs_path))
     }
 
     pub fn file(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [] = take_exact(ctx, loc.clone(), args)?;
+        let [] = take_exact(ctx, &loc, args)?;
 
         match ctx.file() {
             Some(path) => Ok(MalVal::Str(path.to_string_lossy().into()).with_loc(loc)),
@@ -333,13 +367,13 @@ mod fmt {
     }
 
     pub fn prin(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, loc, args)?;
+        let [value] = take_exact(ctx, &loc, args)?;
         print!("{}", PrettyPrint(&value.value));
         Ok(value)
     }
 
     pub fn print(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, loc, args)?;
+        let [value] = take_exact(ctx, &loc, args)?;
         println!("{}", PrettyPrint(&value.value));
         Ok(value)
     }
@@ -374,7 +408,7 @@ mod cmp {
     }
 
     pub fn not(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, loc.clone(), args)?;
+        let [value] = take_exact(ctx, &loc, args)?;
         Ok(MalVal::Bool(!value.is_true()).with_loc(loc))
     }
 
@@ -523,7 +557,7 @@ mod ds {
     use super::{take_exact, to_list_like};
 
     pub fn nth(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value, index] = take_exact(ctx, loc.clone(), args)?;
+        let [value, index] = take_exact(ctx, &loc, args)?;
 
         let mut value = to_list_like(ctx, value)?;
 
@@ -547,7 +581,7 @@ mod ds {
     }
 
     pub fn first(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, loc.clone(), args)?;
+        let [value] = take_exact(ctx, &loc, args)?;
         let mut value = to_list_like(ctx, value)?.to_list();
         let Some(value) = value.pop_front() else {
             return Err(Error::new(ErrorKind::FirstOfEmptyList, ctx, loc));
@@ -556,14 +590,14 @@ mod ds {
     }
 
     pub fn rest(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, loc.clone(), args)?;
+        let [value] = take_exact(ctx, &loc, args)?;
         let mut ls = to_list_like(ctx, value)?.to_list();
         ls.pop_front();
         Ok(MalVal::List(ls).with_loc(loc))
     }
 
     pub fn cons(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [el, value] = take_exact(ctx, loc.clone(), args)?;
+        let [el, value] = take_exact(ctx, &loc, args)?;
 
         let mut list = to_list_like(ctx, value)?.to_list();
 
@@ -619,7 +653,7 @@ mod ds {
     }
 
     pub fn count(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, loc.clone(), args)?;
+        let [value] = take_exact(ctx, &loc, args)?;
 
         Ok(MalVal::Int(match value.value {
             MalVal::List(list) => list.len(),
@@ -907,14 +941,14 @@ impl DoubleEndedIterator for ListLikeIter {
 
 fn take_atleast<const N: usize>(
     ctx: &CallContext,
-    loc: Location,
+    loc: &Location,
     mut list: List,
 ) -> Result<([MalData; N], List), Error> {
     if list.len() < N {
         return Err(Error::new(
             ErrorKind::AtleastArityMismatch(N, list.len()),
             ctx,
-            loc,
+            loc.clone(),
         ));
     }
 
@@ -929,7 +963,7 @@ fn take_atleast<const N: usize>(
 
 fn take_exact<const N: usize>(
     ctx: &CallContext,
-    loc: Location,
+    loc: &Location,
     args: List,
 ) -> Result<[MalData; N], Error> {
     match args.into_array::<N>() {
@@ -937,7 +971,7 @@ fn take_exact<const N: usize>(
         Err(list) => Err(Error::new(
             ErrorKind::ArityMismatch(N, list.len()),
             ctx,
-            loc,
+            loc.clone(),
         )),
     }
 }

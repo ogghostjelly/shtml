@@ -1,4 +1,4 @@
-use std::{fmt, path::PathBuf};
+use std::{fmt, io, path::PathBuf};
 
 use reader::Location;
 use types::{CallContext, MalData};
@@ -75,4 +75,8 @@ pub enum ErrorKind {
     DeniedFsAccess,
     #[error("invalid path '{}'", _0.display())]
     InvalidPath(PathBuf),
+    #[error("failed to parse, {0}")]
+    Parse(String),
+    #[error("{0}")]
+    Io(io::Error),
 }
