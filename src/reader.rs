@@ -12,6 +12,7 @@ pub fn parse_file(loc: Location, input: &str) -> Result<Vec<Element>, Error> {
 
 pub fn parse(loc: Location, input: &str) -> Result<Option<MalData>, Error> {
     let (rest, value) = value(Span { data: input, loc })?;
+    let (rest, _) = rest.take_while(|ch| ch.is_whitespace());
 
     if !rest.data.is_empty() {
         return Err(rest.err(ErrorKind::UnexpectedEof));
