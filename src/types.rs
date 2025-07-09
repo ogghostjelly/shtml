@@ -1,4 +1,6 @@
-use std::{collections::HashMap, iter, slice, vec};
+use std::{iter, slice, vec};
+
+use indexmap::IndexMap;
 
 use crate::{
     env::{Env, TcoRet},
@@ -16,7 +18,7 @@ pub struct MalData {
 pub enum MalVal {
     List(List),
     Vector(Vec<MalData>),
-    Map(HashMap<MalKey, MalData>),
+    Map(IndexMap<MalKey, MalData>),
     Sym(String),
     Str(String),
     Kwd(String),

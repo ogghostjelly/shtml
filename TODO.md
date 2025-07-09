@@ -1,2 +1,1 @@
 - [ ] Add <@a> syntax
-- [ ] Try make MalVal uncloneable

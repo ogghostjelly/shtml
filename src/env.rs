@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
+
+use indexmap::IndexMap;
 
 use crate::{
     reader::Location,
@@ -8,25 +10,31 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct Env {
-    data: HashMap<String, MalData>,
-    outer: Option<Box<Env>>,
+    data: HashMap<String, Rc<MalData>>,
+    outer: Option<Rc<Env>>,
 }
 
 impl Env {
-    pub fn new(data: HashMap<String, MalData>, outer: Option<Box<Env>>) -> Self {
+    pub fn new(data: HashMap<String, Rc<MalData>>, outer: Option<Rc<Env>>) -> Self {
         Self { data, outer }
     }
 
     pub fn empty() -> Self {
-        Self::new(HashMap::new(), None)
+        Self {
+            data: HashMap::new(),
+            outer: None,
+        }
     }
 
     pub fn inner(env: &Env) -> Self {
-        Self::new(HashMap::new(), Some(Box::new(env.clone())))
+        Self {
+            data: HashMap::new(),
+            outer: Some(Rc::new(env.clone())),
+        }
     }
 
     pub fn set(&mut self, key: impl Into<String>, value: MalData) {
-        self.data.insert(key.into(), value);
+        self.data.insert(key.into(), Rc::new(value));
     }
 
     pub fn set_fn(
@@ -95,7 +103,7 @@ impl Env {
                         .map(|v| MalVal::Vector(v).with_loc(ast.loc))
                 }
                 MalVal::Map(map) => {
-                    let mut ret = HashMap::with_capacity(map.len());
+                    let mut ret = IndexMap::with_capacity(map.len());
                     for (key, value) in map.into_iter() {
                         ret.insert(key, self.eval(value)?);
                     }

@@ -438,7 +438,7 @@ pub fn ds(data: &mut Env) {
 }
 
 mod ds {
-    use std::collections::HashMap;
+    use indexmap::IndexMap;
 
     use crate::{
         reader::Location,
@@ -508,7 +508,7 @@ mod ds {
 
     pub fn hash_map(loc: Location, args: List) -> MalRet {
         let mut args = args.into_iter();
-        let mut map = HashMap::with_capacity(args.len() / 2);
+        let mut map = IndexMap::with_capacity(args.len() / 2);
 
         while let Some(key) = args.next() {
             let Some(value) = args.next() else {
