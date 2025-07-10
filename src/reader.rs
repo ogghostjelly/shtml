@@ -487,7 +487,7 @@ impl<'i> Span<'i> {
 
     fn err(self, kind: ErrorKind) -> Error<'i> {
         Error {
-            inner: ErrorInner::One(ErrorData { data: self, kind }),
+            inner: ErrorInner { data: self, kind },
         }
     }
 }
@@ -518,24 +518,14 @@ pub struct Error<'i> {
 }
 
 impl Error<'_> {
-    pub fn or(self, o: Self) -> Self {
-        Error {
-            inner: ErrorInner::Or(Box::new((self.inner, o.inner))),
-        }
+    pub fn or(self, _: Self) -> Self {
+        self
     }
 }
 
 #[derive(thiserror::Error, Debug)]
-enum ErrorInner<'i> {
-    #[error("{0}")]
-    One(ErrorData<'i>),
-    #[error("{} or {}", _0.0, _0.1)]
-    Or(Box<(ErrorInner<'i>, ErrorInner<'i>)>),
-}
-
-#[derive(Display, Debug)]
-#[display("{kind} at {}", data.loc)]
-struct ErrorData<'i> {
+#[error("{kind} at {}", data.loc)]
+struct ErrorInner<'i> {
     data: Span<'i>,
     kind: ErrorKind,
 }
