@@ -7,8 +7,7 @@ use pest_derive::Parser;
 use crate::types::MalVal;
 
 pub fn parse(input: &str) -> Result<Option<MalVal>, Error> {
-    let mut pairs = Parser::parse(Rule::expr, input)?;
-    println!("{pairs}");
+    let mut pairs = Parser::parse(Rule::file, input)?;
 
     fn parse_value(pair: Pair<Rule>) -> Option<MalVal> {
         Some(match pair.as_rule() {
@@ -33,15 +32,9 @@ pub fn parse(input: &str) -> Result<Option<MalVal>, Error> {
             Rule::splice_unquote => parse_shorthand("splice-unquote", pair),
             Rule::value => return parse_value(pop(pair)),
 
-            Rule::text => {
-                println!("text: '{}'", pair.as_str());
-                return None;
-            }
-            Rule::expr => {
-                let x: Vec<_> = pair.into_inner().filter_map(parse_value).collect();
-                println!("{x:?}");
-                return None;
-            }
+            Rule::escaped_sigil => todo!("escaped_sigil: {pair}"),
+            Rule::text => todo!("text: {pair}"),
+            Rule::file => todo!("file: {pair}"),
 
             Rule::string_chars | Rule::whitespace | Rule::elems | Rule::digits => {
                 unreachable!()
@@ -67,6 +60,12 @@ pub fn parse(input: &str) -> Result<Option<MalVal>, Error> {
     let pair = pairs.next().unwrap();
 
     Ok(parse_value(pair))
+}
+
+pub enum Element {
+    Value(MalVal),
+    Text(String),
+    EscapedSigil,
 }
 
 #[derive(Parser)]

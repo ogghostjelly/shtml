@@ -1,23 +1,6 @@
 use colored::Colorize as _;
-use pest::Parser;
 use rustyline::{error::ReadlineError, Editor};
 use shtml::reader;
-
-fn read(input: String) -> String {
-    input
-}
-
-fn eval(input: String) -> String {
-    input
-}
-
-fn print(input: String) -> String {
-    input
-}
-
-fn rep(input: String) -> String {
-    print(eval(read(input)))
-}
 
 fn main() {
     match run() {
@@ -44,7 +27,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(None) => {}
                     Err(e) => println!("{e}"),
                 };
-                println!("> {}", rep(input));
             }
             Err(ReadlineError::Interrupted) => continue,
             Err(ReadlineError::Eof) => break,

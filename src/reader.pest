@@ -13,7 +13,7 @@ string = { "\"" ~ string_chars ~ "\"" }
 whitespace = _{ NEWLINE | " " }
 keyword = { ":" ~ (!whitespace ~ ANY)* }
 
-symbol = { (!whitespace ~ !"\"" ~ !"'" ~ ANY)+ }
+symbol = { (!whitespace ~ !"(" ~ !")" ~ !"\"" ~ !"'" ~ ANY)+ }
 
 elems = { value? ~ ( whitespace+ ~ value )* }
 list = { "(" ~ elems ~ ")" }
@@ -41,5 +41,6 @@ value = {
     symbol
 }
 
-text = { ( "@@" | ( !"@" ~ ANY ) )* }
-expr = { text }
+escaped_sigil = { "@@" }
+text = {  (!"@" ~ ANY)+ }
+file = { (escaped_sigil | ("@" ~ value) | text)+ }
