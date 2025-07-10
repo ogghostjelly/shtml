@@ -41,14 +41,20 @@ fn shtml(input: Span<'_>) -> Result<Vec<Element>, Error<'_>> {
 
     loop {
         let (rest, text) = text(input);
-        elems.push(Element::Text(text.data.to_string()));
+        elems.push(Element::Text(unescape_text(text.data)));
 
         if rest.data.is_empty() {
             return Ok(elems);
         }
 
-        let (rest, _) = Tag("@").parse(rest)?;
-        let (rest, value) = value(rest)?;
+        let (rest, is_value) =
+            Or(Map(Tag("@"), |_| true), Map(Tag("<x@"), |_| false)).parse(rest)?;
+
+        let (rest, value) = if is_value {
+            value(rest)
+        } else {
+            Map(shtml_tag, Some).parse(rest)
+        }?;
 
         input = rest;
 
@@ -56,6 +62,47 @@ fn shtml(input: Span<'_>) -> Result<Vec<Element>, Error<'_>> {
             elems.push(Element::Value(value));
         }
     }
+}
+
+fn shtml_tag(input: Span<'_>) -> TResult<'_, MalData> {
+    let (rest, _) = input.take_while(|ch| ch.is_whitespace());
+
+    let sym_loc = rest.loc.clone();
+    let (mut next, sym) = symbol(rest)?;
+    let sym = MalVal::Sym(sym.to_string()).with_loc(sym_loc);
+
+    let mut map = IndexMap::new();
+
+    loop {
+        let (rest, _) = next.take_while(|ch| ch.is_whitespace());
+
+        let close = Map(Or(Tag(">"), Tag("/>")), |_| None);
+        let (rest, pair) = Or(close, Map(shtml_tag_prop, Some)).parse(rest)?;
+
+        next = rest;
+
+        match pair {
+            Some((key, value)) => _ = map.insert(key, value),
+            None => break,
+        }
+    }
+
+    let map = MalVal::Map(map).with_loc(input.loc.clone());
+    Ok((next, list!(sym, map).with_loc(input.loc)))
+}
+
+fn shtml_tag_prop(input: Span<'_>) -> TResult<'_, (MalKey, MalData)> {
+    let (rest, key) = input.take_while(|ch| is_valid_char(ch) && ch != '=');
+    let key = MalKey::Sym(key.data.to_string());
+
+    let (rest, _) = rest.take_while(|ch| ch.is_whitespace());
+    let (rest, _) = Tag("=").parse(rest)?;
+    let (rest, _) = rest.take_while(|ch| ch.is_whitespace());
+
+    let (rest, value) = value(rest)?;
+    let value = value.expect("That is not a valid key!"); // TODO: Don't unwrap
+
+    Ok((rest, (key, value)))
 }
 
 #[derive(Debug, Display)]
@@ -101,19 +148,24 @@ macro_rules! loc {
 
 fn text(input: Span<'_>) -> (Span<'_>, Span<'_>) {
     let mut chars = input.data.char_indices().peekable();
-    let mut index = input.data.len();
 
     while let Some((i, ch)) = chars.next() {
-        if ch == '@' {
+        if input.data[i..].starts_with("<x@") {
+            return input.split_offset_unchecked(i);
+        } else if ch == '@' {
             if let Some((_, '@')) = chars.peek() {
                 _ = chars.next();
             } else {
-                index = i;
+                return input.split_offset_unchecked(i);
             }
         }
     }
 
-    input.split_offset_unchecked(index)
+    input.split_offset_unchecked(input.data.len())
+}
+
+fn unescape_text(text: &str) -> String {
+    text.replace("@@", "@")
 }
 
 fn value(input: Span<'_>) -> TResult<'_, Option<MalData>> {
@@ -183,24 +235,26 @@ fn hash_map(input: Span<'_>) -> TResult<'_, MalData> {
 
     while let Ok((r, elem)) = next_value(rest.clone()) {
         match key.take() {
-            Some((key, _)) => _ = map.insert(key, elem),
-            None => {
-                key = match MalKey::from_value(elem.value) {
-                    Ok(key) => Some((key, rest.clone())),
-                    Err(value) => return Err(rest.err(ErrorKind::MapBadKey(value.type_name()))),
-                }
-            }
+            Some((_, key)) => _ = map.insert(key, elem),
+            None => key = Some(to_key(rest, elem)?),
         }
 
         (rest, _) = r.take_while(|ch| ch.is_whitespace());
     }
 
-    if let Some((_, inp)) = key {
+    if let Some((inp, _)) = key {
         return Err(inp.err(ErrorKind::MapUnevenArgs));
     }
 
     let (rest, _) = Tag("}").parse(rest)?;
     Ok((rest, MalVal::Map(map).with_loc(loc)))
+}
+
+fn to_key(input: Span<'_>, data: MalData) -> TResult<'_, MalKey> {
+    match MalKey::from_value(data.value) {
+        Ok(key) => Ok((input, key)),
+        Err(value) => Err(input.err(ErrorKind::MapBadKey(value.type_name()))),
+    }
 }
 
 fn list(input: Span<'_>) -> TResult<'_, MalData> {
