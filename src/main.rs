@@ -7,7 +7,7 @@ use shtml::{
     cli::{Cli, Commands, ProjectPath},
     env::Env,
     ns,
-    reader::{self, Location},
+    reader::{self, Element, Location},
     types::CallContext,
 };
 
@@ -44,14 +44,18 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
             Ok(input) => {
                 let _ = rl.add_history_entry(&input);
 
-                match reader::parse(loc.clone(), &input) {
+                match reader::parse_file(loc.clone(), &input) {
                     Ok(vals) => {
                         for value in vals {
-                            match env.eval(&src, value) {
-                                Ok(value) => println!("> {}", value.value),
-                                Err(e) => println!("{e}"),
+                            match value {
+                                Element::Text(value) => print!("{value}"),
+                                Element::Value(value) => match env.eval(&src, value) {
+                                    Ok(value) => print!("{}", value.value),
+                                    Err(e) => println!("{e}"),
+                                },
                             }
                         }
+                        println!()
                     }
                     Err(e) => println!("{e}"),
                 };

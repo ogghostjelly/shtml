@@ -381,10 +381,10 @@ mod fmt {
 
 pub fn cmp(data: &mut Env) {
     data.set_fn(loc!(), "=", cmp::eq);
-    data.set_fn(loc!(), "<", cmp::lt);
-    data.set_fn(loc!(), "<=", cmp::lte);
-    data.set_fn(loc!(), ">", cmp::gt);
-    data.set_fn(loc!(), ">=", cmp::gte);
+    data.set_fn(loc!(), "lt", cmp::lt);
+    data.set_fn(loc!(), "lt=", cmp::lte);
+    data.set_fn(loc!(), "gt", cmp::gt);
+    data.set_fn(loc!(), "gt=", cmp::gte);
 
     data.set_fn(loc!(), "not", cmp::not);
 

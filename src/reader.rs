@@ -241,7 +241,7 @@ fn keyword(input: Span<'_>) -> TResult<'_, &str> {
 }
 
 fn is_valid_char(input: char) -> bool {
-    !input.is_whitespace() && !['\"', '\'', '(', ')', '[', ']', '{', '}'].contains(&input)
+    !input.is_whitespace() && !"\"\'()[]{}<>".contains(input)
 }
 
 fn string(input: Span<'_>) -> TResult<'_, MalData> {

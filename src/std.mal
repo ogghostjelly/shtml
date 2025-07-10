@@ -10,7 +10,7 @@
     [& xs]
     (if (not (empty? xs))
         (list 'if (first xs)
-            (if (> (count xs) 1)
+            (if (gt (count xs) 1)
                 (nth xs 1)
                 (throw "odd number of forms to cond"))
             (cons 'cond (rest (rest xs))))
