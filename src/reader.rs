@@ -2,9 +2,10 @@ use std::fmt;
 use std::rc::Rc;
 
 use derive_more::Display;
+use indexmap::IndexMap;
 
 use crate::list;
-use crate::types::{List, MalData, MalVal};
+use crate::types::{List, MalData, MalKey, MalVal};
 
 pub fn parse_file(loc: Location, input: &str) -> Result<Vec<Element>, Error> {
     shtml(Span { data: input, loc })
@@ -174,10 +175,32 @@ fn next_value(input: Span<'_>) -> TResult<'_, MalData> {
 
 fn hash_map(input: Span<'_>) -> TResult<'_, MalData> {
     let loc = input.loc.clone();
-    let (rest, ls) = ListLike("{", "}").parse(input)?;
-    let mut ls = List::from_vec(ls);
-    ls.push_front(MalVal::Sym("hash-map".into()).with_loc(loc.clone()));
-    Ok((rest, MalVal::List(ls).with_loc(loc)))
+    let (rest, _) = Tag("{").parse(input)?;
+
+    let (mut rest, _) = rest.take_while(|ch| ch.is_whitespace());
+    let mut map = IndexMap::new();
+    let mut key = None;
+
+    while let Ok((r, elem)) = next_value(rest.clone()) {
+        match key.take() {
+            Some((key, _)) => _ = map.insert(key, elem),
+            None => {
+                key = match MalKey::from_value(elem.value) {
+                    Ok(key) => Some((key, rest.clone())),
+                    Err(value) => return Err(rest.err(ErrorKind::MapBadKey(value.type_name()))),
+                }
+            }
+        }
+
+        (rest, _) = r.take_while(|ch| ch.is_whitespace());
+    }
+
+    if let Some((_, inp)) = key {
+        return Err(inp.err(ErrorKind::MapUnevenArgs));
+    }
+
+    let (rest, _) = Tag("}").parse(rest)?;
+    Ok((rest, MalVal::Map(map).with_loc(loc)))
 }
 
 fn list(input: Span<'_>) -> TResult<'_, MalData> {
@@ -518,8 +541,12 @@ pub struct Error<'i> {
 }
 
 impl Error<'_> {
-    pub fn or(self, _: Self) -> Self {
-        self
+    pub fn or(self, o: Self) -> Self {
+        if self.inner.kind.priority() >= o.inner.kind.priority() {
+            self
+        } else {
+            o
+        }
     }
 }
 
@@ -542,6 +569,25 @@ enum ErrorKind {
     Symbol,
     Int(std::num::ParseIntError),
     Float(std::num::ParseFloatError),
+    #[display("'{_0}' cannot be a map key")]
+    MapBadKey(&'static str),
+    #[display("hash-map expects an even number of arguments")]
+    MapUnevenArgs,
+}
+
+impl ErrorKind {
+    fn priority(&self) -> usize {
+        match self {
+            ErrorKind::Tag(_) => 0,
+            ErrorKind::Digit => 1,
+            ErrorKind::Keyword => 1,
+            ErrorKind::Symbol => 1,
+            ErrorKind::Int(_) => 1,
+            ErrorKind::Float(_) => 1,
+            ErrorKind::MapBadKey(_) => 1,
+            ErrorKind::MapUnevenArgs => 1,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1,2 +1,1 @@
-- [ ] Evaluate hash-map in reader
 - [ ] Add <@a> syntax
