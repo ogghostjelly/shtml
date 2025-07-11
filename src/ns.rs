@@ -2,7 +2,7 @@ use crate::{
     env::Env,
     list, loc,
     reader::{self, Location},
-    types::{CallContext, List, MalData, MalVal},
+    types::{CallContext, List, MalData, MalKey, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -93,7 +93,7 @@ mod sform {
                     let ctx = ctx.new_frame(("unquote".into(), data.loc.clone()));
                     let [value] = take_exact(&ctx, &data.loc, args)?;
                     let value = env.eval(&ctx, value)?;
-                    for el in to_list_like(&ctx, value)? {
+                    for el in to_list_like(&ctx, value)?.into_iter().rev() {
                         new_list.push_front(el);
                     }
                 }
@@ -129,7 +129,7 @@ mod sform {
         let [bindings, body] = take_exact(ctx, &loc, args)?;
         let mut bindings = to_list_like(ctx, bindings)?.into_iter();
 
-        let mut env = Env::inner(env);
+        let mut env = Env::inner("let*".into(), env);
 
         while let Some(key) = bindings.next() {
             let Some(value) = bindings.next() else {
@@ -242,7 +242,9 @@ mod sform {
 pub fn fs(data: &mut Env) {
     data.set_fn(loc!(), "file", fs::file);
     data.set_fn(loc!(), "load-mal", fs::load_mal);
+    data.set_fn(loc!(), "load-shtml", fs::load_shtml);
     data.set_fn(loc!(), "read-file", fs::read_file);
+    data.set_fn(loc!(), "new-env", fs::new_env);
 }
 
 mod fs {
@@ -250,46 +252,73 @@ mod fs {
 
     use crate::{
         env::Env,
-        list,
+        list, load,
         ns::to_str,
-        reader::{self, Location},
-        types::{CallContext, DirContext, List, MalVal},
+        reader::Location,
+        types::{CallContext, DirContext, List, MalData, MalVal},
         Error, ErrorKind, MalRet,
     };
 
-    use super::take_exact;
+    use super::{take_exact, to_env};
+
+    pub fn load_shtml(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let dir = take_dir_context(ctx, &loc)?;
+        let [env, path] = take_exact(ctx, &loc, args)?;
+
+        let mut env = to_env(ctx, env)?;
+        let (rel_path, abs_path) = to_path(ctx, dir, path)?;
+
+        let value = conv_err(
+            load::shtml(&mut env, dir.root(), &rel_path, abs_path),
+            ctx,
+            &loc,
+        )?;
+
+        Ok(MalVal::Str(value).with_loc(loc))
+    }
 
     pub fn load_mal(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let dir = take_dir_context(ctx, &loc)?;
-        let (rel_path, abs_path) = take_path(ctx, dir, (args, &loc))?;
+        let [env, path] = take_exact(ctx, &loc, args)?;
 
-        let input = match fs::read_to_string(&abs_path) {
-            Ok(input) => input,
-            Err(e) => return Err(Error::new(ErrorKind::Io(e), ctx, loc)),
-        };
+        let mut env = to_env(ctx, env)?;
+        let (rel_path, abs_path) = to_path(ctx, dir, path)?;
 
-        let file_loc = Location::file(rel_path);
+        conv_err(
+            load::mal(&mut env, dir.root(), &rel_path, abs_path),
+            ctx,
+            &loc,
+        )
+    }
 
-        match reader::parse(file_loc.clone(), &input) {
-            Ok(vals) => {
-                let mut vals = List::from_vec(vals);
-                vals.push_front(MalVal::Sym("do".into()).with_loc(file_loc.clone()));
-
-                let ctx = CallContext::new(dir.root(), abs_path);
-                let mut env = Env::std();
-                env.eval(&ctx, MalVal::List(vals).with_loc(file_loc))
-            }
-            Err(e) => Err(Error::new(ErrorKind::Parse(e.to_string()), ctx, loc)),
+    fn conv_err<T>(
+        res: Result<T, load::Error>,
+        ctx: &CallContext,
+        loc: &Location,
+    ) -> Result<T, Error> {
+        match res {
+            Ok(val) => Ok(val),
+            Err(e) => match e {
+                load::Error::Io(e) => Err(Error::new(ErrorKind::Io(e), ctx, loc.clone())),
+                load::Error::Parse(e) => Err(Error::new(ErrorKind::Parse(e), ctx, loc.clone())),
+                load::Error::SHtml(e) => Err(e),
+                load::Error::CannotEmbed(data) => Err(Error::new(
+                    ErrorKind::CannotEmbed(data.type_name()),
+                    ctx,
+                    data.loc,
+                )),
+            },
         }
     }
 
     pub fn read_file(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let dir = take_dir_context(ctx, &loc)?;
-        let (_, path) = take_path(ctx, dir, (args, &loc))?;
+        let [path] = take_exact(ctx, &loc, args)?;
+        let (_, path) = to_path(ctx, dir, path)?;
 
         match fs::read_to_string(path) {
             Ok(s) => Ok(MalVal::Str(s).with_loc(loc)),
-            Err(e) => todo!("{e}"),
+            Err(e) => Err(Error::new(ErrorKind::Io(e), ctx, loc)),
         }
     }
 
@@ -304,23 +333,28 @@ mod fs {
         Ok(dir)
     }
 
-    fn take_path(
+    fn to_path(
         ctx: &CallContext,
         dir: &DirContext,
-        (args, loc): (List, &Location),
+        path: MalData,
     ) -> Result<(String, PathBuf), Error> {
-        let [value] = take_exact(ctx, loc, args)?;
-        let rel_path = to_str(ctx, value)?;
+        let loc = path.loc.clone();
+        let rel_path = to_str(ctx, path)?;
 
         let Some(abs_path) = dir.canonicalize(&rel_path) else {
             return Err(Error::new(
                 ErrorKind::InvalidPath(rel_path.into()),
                 ctx,
-                loc.clone(),
+                loc,
             ));
         };
 
         Ok((rel_path, abs_path))
+    }
+
+    pub fn new_env(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [] = take_exact(ctx, &loc, args)?;
+        Ok(MalVal::Env(Env::std()).with_loc(loc))
     }
 
     pub fn file(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
@@ -536,6 +570,8 @@ pub fn ds(data: &mut Env) {
     data.set_fn(loc!(), "rest", ds::rest);
     data.set_fn(loc!(), "nth", ds::nth);
 
+    data.set_fn(loc!(), "remove-key", ds::remove_key);
+
     data.set_fn(loc!(), "count", ds::count);
 }
 
@@ -543,12 +579,13 @@ mod ds {
     use indexmap::IndexMap;
 
     use crate::{
+        list,
         reader::Location,
-        types::{CallContext, List, MalKey, MalVal},
+        types::{CallContext, List, MalVal},
         Error, ErrorKind, MalRet,
     };
 
-    use super::{take_exact, to_list_like};
+    use super::{take_exact, to_key, to_list_like};
 
     pub fn nth(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value, index] = take_exact(ctx, &loc, args)?;
@@ -621,16 +658,7 @@ mod ds {
                 return Err(Error::new(ErrorKind::UnevenArguments("hash-map"), ctx, loc));
             };
 
-            let key = match MalKey::from_value(key.value) {
-                Ok(key) => key,
-                Err(key) => {
-                    return Err(Error::new(
-                        ErrorKind::InvalidMapKey(key.type_name()),
-                        ctx,
-                        loc,
-                    ))
-                }
-            };
+            let key = to_key(ctx, key)?;
 
             map.insert(key, value);
         }
@@ -644,6 +672,28 @@ mod ds {
 
     pub fn vec(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
         Ok(MalVal::Vector(args.into_vec()).with_loc(loc))
+    }
+
+    pub fn remove_key(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [value, key] = take_exact(ctx, &loc, args)?;
+
+        let MalVal::Map(mut map) = value.value else {
+            return Err(Error::new(
+                ErrorKind::UnexpectedType(MalVal::HASH_MAP, value.type_name()),
+                ctx,
+                value.loc,
+            ));
+        };
+
+        let key = to_key(ctx, key)?;
+
+        let val = map.shift_remove(&key);
+        let map = MalVal::Map(map).with_loc(value.loc);
+
+        match val {
+            Some(data) => Ok(list!(data, map).with_loc(loc)),
+            None => Ok(list!(list!().with_loc(loc.clone()), map).with_loc(loc)),
+        }
     }
 
     pub fn count(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
@@ -773,6 +823,31 @@ fn op_error(
     )
 }
 
+fn to_env(ctx: &CallContext, value: MalData) -> Result<Env, Error> {
+    let MalVal::Env(env) = value.value else {
+        return Err(Error::new(
+            ErrorKind::UnexpectedType(MalVal::ENV, value.type_name()),
+            ctx,
+            value.loc,
+        ));
+    };
+
+    Ok(env)
+}
+
+fn to_key(ctx: &CallContext, value: MalData) -> Result<MalKey, Error> {
+    match MalKey::from_value(value.value) {
+        Ok(key) => Ok(key),
+        Err(key) => {
+            return Err(Error::new(
+                ErrorKind::InvalidMapKey(key.type_name()),
+                ctx,
+                value.loc,
+            ))
+        }
+    }
+}
+
 fn to_str(ctx: &CallContext, value: MalData) -> Result<String, Error> {
     let MalVal::Str(key) = value.value else {
         return {
@@ -801,14 +876,14 @@ fn to_sym(ctx: &CallContext, value: MalData) -> Result<String, Error> {
     Ok(key)
 }
 
-fn to_list_like(ctx: &CallContext, val: MalData) -> Result<ListLike, Error> {
-    match val.value {
+fn to_list_like(ctx: &CallContext, value: MalData) -> Result<ListLike, Error> {
+    match value.value {
         MalVal::List(list) => Ok(ListLike::List(list)),
         MalVal::Vector(vec) => Ok(ListLike::Vector(vec)),
         _ => Err(Error::new(
-            ErrorKind::UnexpectedType(MalVal::LIST_LIKE, val.type_name()),
+            ErrorKind::UnexpectedType(MalVal::LIST_LIKE, value.type_name()),
             ctx,
-            val.loc,
+            value.loc,
         )),
     }
 }

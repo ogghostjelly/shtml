@@ -36,6 +36,7 @@ pub enum MalVal {
         fn(&CallContext, &mut Env, (List, Location)) -> TcoRet,
     ),
     Fn(MalFn),
+    Env(Env),
 }
 
 impl MalData {
@@ -69,6 +70,7 @@ impl MalVal {
     pub const BOOL: &str = "bool";
     pub const FN: &str = "function";
     pub const MACRO: &str = "macro";
+    pub const ENV: &str = "env";
 
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -83,6 +85,7 @@ impl MalVal {
             MalVal::Bool(_) => Self::BOOL,
             MalVal::BuiltinFn(_, _) | MalVal::Fn { .. } => Self::FN,
             MalVal::Special(_, _) => Self::MACRO,
+            MalVal::Env(_) => Self::ENV,
         }
     }
 }

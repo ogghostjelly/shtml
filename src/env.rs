@@ -11,17 +11,19 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct Env {
+    name: String,
     data: HashMap<String, Rc<MalData>>,
     outer: Option<Rc<Env>>,
 }
 
 impl Env {
-    pub fn new(data: HashMap<String, Rc<MalData>>, outer: Option<Rc<Env>>) -> Self {
-        Self { data, outer }
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn std() -> Self {
         let mut env = Self {
+            name: "std".into(),
             data: HashMap::new(),
             outer: None,
         };
@@ -30,8 +32,9 @@ impl Env {
         env
     }
 
-    pub fn inner(env: &Env) -> Self {
+    pub fn inner(name: String, env: &Env) -> Self {
         Self {
+            name,
             data: HashMap::new(),
             outer: Some(Rc::new(env.clone())),
         }
@@ -120,6 +123,7 @@ impl Env {
                 }
                 MalVal::Sym(sym) => return self.get(ctx, ast.loc, sym).cloned(),
                 MalVal::Str(_)
+                | MalVal::Env(_)
                 | MalVal::BuiltinFn(_, _)
                 | MalVal::Fn { .. }
                 | MalVal::Special(_, _)
@@ -167,8 +171,8 @@ impl Env {
                 bind_rest,
                 body,
             }) => {
-                let ctx =
-                    &ctx.new_frame((name.unwrap_or_else(|| "lambda".to_string()), loc.clone()));
+                let name = name.unwrap_or_else(|| "lambda".to_string());
+                let ctx = &ctx.new_frame((name.clone(), loc.clone()));
 
                 let bind_rest = match &bind_rest {
                     Some(bind) => bind.as_ref(),
@@ -184,7 +188,7 @@ impl Env {
                     }
                 };
 
-                let mut env = Env::inner(&outer);
+                let mut env = Env::inner(name, &outer);
                 let bindings = binds.into_iter();
                 let mut vals = vals.into_iter();
 
@@ -232,6 +236,7 @@ impl Env {
             }
             MalVal::Special(_, f) => f(ctx, self, (vals, loc)),
             MalVal::List(_)
+            | MalVal::Env(_)
             | MalVal::Vector(_)
             | MalVal::Map(_)
             | MalVal::Sym(_)

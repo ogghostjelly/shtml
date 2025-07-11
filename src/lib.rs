@@ -5,6 +5,7 @@ use types::{CallContext, MalData};
 
 pub mod cli;
 pub mod env;
+pub mod load;
 pub mod ns;
 pub mod printer;
 pub mod reader;
@@ -79,4 +80,6 @@ pub enum ErrorKind {
     Parse(String),
     #[error("{0}")]
     Io(io::Error),
+    #[error("cannot embed '{0}'")]
+    CannotEmbed(&'static str),
 }
