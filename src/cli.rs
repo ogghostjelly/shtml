@@ -14,7 +14,7 @@ pub enum Commands {
     Watch(ProjectPath),
 }
 
-#[derive(Args, Clone)]
+#[derive(Args, Clone, Default)]
 pub struct ProjectPath {
     /// The path to a root project directory or the current directory if not specified.
     path: Option<PathBuf>,

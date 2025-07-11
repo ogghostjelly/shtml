@@ -3,6 +3,7 @@ use std::{collections::HashMap, rc::Rc};
 use indexmap::IndexMap;
 
 use crate::{
+    ns,
     reader::Location,
     types::{CallContext, List, MalData, MalFn, MalVal},
     Error, ErrorKind, MalRet,
@@ -19,11 +20,14 @@ impl Env {
         Self { data, outer }
     }
 
-    pub fn empty() -> Self {
-        Self {
+    pub fn std() -> Self {
+        let mut env = Self {
             data: HashMap::new(),
             outer: None,
-        }
+        };
+
+        ns::std(&mut env);
+        env
     }
 
     pub fn inner(env: &Env) -> Self {

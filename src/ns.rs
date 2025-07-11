@@ -251,7 +251,7 @@ mod fs {
     use crate::{
         env::Env,
         list,
-        ns::{self, to_str},
+        ns::to_str,
         reader::{self, Location},
         types::{CallContext, DirContext, List, MalVal},
         Error, ErrorKind, MalRet,
@@ -276,13 +276,7 @@ mod fs {
                 vals.push_front(MalVal::Sym("do".into()).with_loc(file_loc.clone()));
 
                 let ctx = CallContext::new(dir.root(), abs_path);
-
-                let mut env = {
-                    let mut data = Env::empty();
-                    ns::std(&mut data);
-                    data
-                };
-
+                let mut env = Env::std();
                 env.eval(&ctx, MalVal::List(vals).with_loc(file_loc))
             }
             Err(e) => Err(Error::new(ErrorKind::Parse(e.to_string()), ctx, loc)),
