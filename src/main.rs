@@ -1,6 +1,7 @@
 use std::{
     env::current_dir,
-    fs, io,
+    fs,
+    io::{self, Cursor},
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -11,7 +12,7 @@ use rustyline::{error::ReadlineError, Editor};
 use shtml::{
     cli::{Cli, Commands, ProjectPath},
     env::Env,
-    reader::{self, Location},
+    reader::{self, Element, Location},
     types::{CallContext, List, MalData, MalVal},
 };
 
@@ -115,19 +116,19 @@ fn build_inner(path: Rc<PathBuf>) -> Result<(), Error> {
     }
     fs::create_dir(&dist).map_err(|e| Error::CreateDir("_site".to_string(), e))?;
 
-    rec_dir(&env, &path, &dist, "", |filename| {
+    rec_dir(&env, path, &dist, "", |filename| {
         filename == "_site" || filename == "config.mal"
     })
 }
 
 fn rec_dir(
     env: &Env,
-    from: &Path,
+    from: Rc<PathBuf>,
     to: &Path,
     dir: &str,
     ignore: impl Fn(&str) -> bool,
 ) -> Result<(), Error> {
-    for entry in read_dir(from, dir)? {
+    for entry in read_dir(&from, dir)? {
         let entry = entry.map_err(|e| Error::ReadDir(dir.to_string(), e))?;
         let path = entry.path();
 
@@ -147,29 +148,52 @@ fn rec_dir(
             .metadata()
             .map_err(|e| Error::ReadDir(dir.to_string(), e))?;
 
-        let out = to.join(dir).join(filename);
+        let rel_path = if dir.is_empty() {
+            filename.to_string()
+        } else {
+            format!("{dir}/{filename}")
+        };
+        let out = to.join(&rel_path);
 
         if metadata.is_dir() {
             fs::create_dir(out).map_err(|e| Error::CreateDir(dir.to_string(), e))?;
-            rec_dir(
-                env,
-                from,
-                to,
-                &if dir.is_empty() {
-                    filename.to_string()
-                } else {
-                    format!("{dir}/{filename}")
-                },
-                allow,
-            )?;
+            rec_dir(env, Rc::clone(&from), to, &rel_path, allow)?;
         } else if metadata.is_file() {
             if filename.ends_with(".shtml") {
-                todo!()
+                build_shtml_file(env.clone(), Rc::clone(&from), to, &rel_path)?;
             } else {
-                fs::copy(path, out)
-                    .map_err(|e| Error::CopySiteFile(dir.to_string(), filename.to_string(), e))?;
+                fs::copy(path, out).map_err(|e| Error::CopySiteFile(rel_path, e))?;
             }
         }
+    }
+
+    Ok(())
+}
+
+fn build_shtml_file(mut env: Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Result<(), Error> {
+    let input = read_file(&from, path)?;
+
+    let loc = Location::file(path);
+    let els = reader::parse_file(loc, &input)
+        .map_err(|e| Error::ParseFile(path.to_string(), e.to_string()))?;
+
+    let mut out = fs::File::create_new(to.join(path).with_extension("html"))
+        .map_err(|e| Error::CreateFile(path.to_string(), e))?;
+
+    let file = from.join(path);
+    let ctx = CallContext::new(from, file);
+
+    for el in els {
+        let text = match el {
+            Element::Text(text) => text,
+            Element::Value(ast) => {
+                let data = env.eval(&ctx, ast).map_err(Error::Shtml)?;
+                format!("{}", data.value) // TODO: Crash if the value is not a string or an empty list
+            }
+        };
+
+        let mut cur = Cursor::new(text);
+        _ = io::copy(&mut cur, &mut out).map_err(|e| Error::CopySiteFile(path.to_string(), e))?
     }
 
     Ok(())
@@ -186,7 +210,7 @@ fn read_dir(base: &Path, dir: &str) -> Result<std::fs::ReadDir, Error> {
 }
 
 fn eval(env: &mut Env, root: Rc<PathBuf>, file: &str) -> Result<MalData, Error> {
-    let ast = parse_file(&root, file)?;
+    let ast = parse_mal(&root, file)?;
     let ctx = create_call_context(root, file);
     Ok(env.eval(&ctx, ast)?)
 }
@@ -201,7 +225,7 @@ fn read_file(base: &Path, file: &str) -> Result<String, Error> {
     std::fs::read_to_string(path).map_err(|e| Error::ReadFile(file.to_string(), e))
 }
 
-fn parse_file(base: &Path, file: &str) -> Result<MalData, Error> {
+fn parse_mal(base: &Path, file: &str) -> Result<MalData, Error> {
     let contents = read_file(base, file)?;
     let loc = Location::file(file);
     let vec = reader::parse(loc.clone(), &contents)
@@ -226,12 +250,14 @@ pub enum Error {
     ReadDir(String, io::Error),
     #[error("couldn't create dir '{0}': {1}")]
     CreateDir(String, io::Error),
+    #[error("couldn't create file '{0}': {1}")]
+    CreateFile(String, io::Error),
     #[error("couldn't remove dir '{0}': {1}")]
     RemoveDir(String, io::Error),
-    #[error("{0}")]
+    #[error(transparent)]
     Shtml(#[from] shtml::Error),
     #[error("invalid UTF-8 in path, '{0}'")]
     MalformedPath(PathBuf),
-    #[error("couldn't copy {0}/{1} to '_site': {2}")]
-    CopySiteFile(String, String, io::Error),
+    #[error("couldn't copy '{0}' to '_site': {1}")]
+    CopySiteFile(String, io::Error),
 }
