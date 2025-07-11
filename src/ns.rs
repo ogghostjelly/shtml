@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::{
     env::Env,
     list, loc,
@@ -40,6 +42,8 @@ pub fn sform(data: &mut Env) {
 }
 
 mod sform {
+    use std::rc::Rc;
+
     use crate::{
         env::{Env, TcoRet, TcoVal},
         list,
@@ -59,11 +63,11 @@ mod sform {
     pub fn quasiquote(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
         let [args] = take_exact(ctx, &loc, args)?;
 
-        let MalVal::List(args) = args.value else {
+        let MalVal::List(args) = &args.value else {
             return Ok(TcoVal::Val(args));
         };
 
-        quasiquote_inner(ctx, env, (args, loc))
+        quasiquote_inner(ctx, env, (args.clone(), loc))
     }
 
     pub fn quasiquote_inner(
@@ -83,12 +87,12 @@ mod sform {
         let mut new_list = List::new();
 
         for data in args.into_rev() {
-            let MalVal::List(value) = data.value else {
+            let MalVal::List(value) = &data.value else {
                 new_list.push_front(data);
                 continue;
             };
 
-            match try_take1_sym(value, "splice-unquote") {
+            match try_take1_sym(value.clone(), "splice-unquote") {
                 Ok(args) => {
                     let ctx = ctx.new_frame(("unquote".into(), data.loc.clone()));
                     let [value] = take_exact(&ctx, &data.loc, args)?;
@@ -98,7 +102,7 @@ mod sform {
                     }
                 }
                 Err(value) => new_list.push_front({
-                    let value = quasiquote_inner(ctx, env, (value, data.loc))?;
+                    let value = quasiquote_inner(ctx, env, (value, data.loc.clone()))?;
                     env.eval_tco(ctx, value)?
                 }),
             }
@@ -112,11 +116,11 @@ mod sform {
             return Err(args);
         };
 
-        if let MalVal::Sym(sym) = first.value {
+        if let MalVal::Sym(sym) = &first.value {
             if sym == s {
                 return Ok(args);
             } else {
-                args.push_front(MalVal::Sym(sym).with_loc(first.loc));
+                args.push_front(MalVal::Sym(sym.clone()).with_loc(first.loc.clone()));
             }
         } else {
             args.push_front(first);
@@ -133,10 +137,14 @@ mod sform {
 
         while let Some(key) = bindings.next() {
             let Some(value) = bindings.next() else {
-                return Err(Error::new(ErrorKind::UnevenArguments("let*"), ctx, key.loc));
+                return Err(Error::new(
+                    ErrorKind::UnevenArguments("let*"),
+                    ctx,
+                    key.loc.clone(),
+                ));
             };
 
-            let key = to_sym(ctx, key)?;
+            let key = to_sym(ctx, &key)?;
 
             let value = env.eval(ctx, value)?;
             env.set(key, value);
@@ -147,14 +155,14 @@ mod sform {
 
     pub fn def(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
         let [key, value] = take_exact(ctx, &loc, args)?;
-        let key = to_sym(ctx, key)?;
-        let mut value = env.eval(ctx, value)?;
+        let key = to_sym(ctx, &key)?;
+        let mut value = env.eval(ctx, value)?.as_ref().clone();
 
         if let MalVal::Fn(MalFn { name, .. }) = &mut value.value {
             *name = Some(key.clone());
         }
 
-        env.set(key, value);
+        env.set(key, Rc::new(value));
 
         Ok(TcoVal::Val(list!().with_loc(loc)))
     }
@@ -194,16 +202,16 @@ mod sform {
 
         for value in to_list_like(ctx, bindings)?.into_iter() {
             let loc = value.loc.clone();
-            let sym = to_sym(ctx, value)?;
+            let sym = to_sym(ctx, &value)?;
 
             match &bind_rest {
-                Some(None) => bind_rest = Some(Some((loc, sym))),
+                Some(None) => bind_rest = Some(Some((loc, sym.to_string()))),
                 Some(Some(_)) => return Err(Error::new(ErrorKind::BindsAfterRest, ctx, loc)),
                 None => {
                     if sym == "&" {
                         bind_rest = Some(None);
                     } else {
-                        binds.push(sym);
+                        binds.push(sym.to_string());
                     }
                 }
             }
@@ -216,7 +224,7 @@ mod sform {
                 outer: env.clone(),
                 binds,
                 bind_rest,
-                body: (Box::new(first), rest),
+                body: (first, rest),
             })
             .with_loc(loc),
         ))
@@ -225,11 +233,11 @@ mod sform {
     pub fn r#macro(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
 
-        let MalVal::Fn(mut f) = value.value else {
+        let MalVal::Fn(mut f) = value.value.clone() else {
             return Err(Error::new(
                 ErrorKind::UnexpectedType(MalVal::FN, value.type_name()),
                 ctx,
-                value.loc,
+                value.loc.clone(),
             ));
         };
 
@@ -248,7 +256,7 @@ pub fn fs(data: &mut Env) {
 }
 
 mod fs {
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::PathBuf, rc::Rc};
 
     use crate::{
         env::Env,
@@ -265,7 +273,7 @@ mod fs {
         let dir = take_dir_context(ctx, &loc)?;
         let [env, path] = take_exact(ctx, &loc, args)?;
 
-        let mut env = to_env(ctx, env)?;
+        let mut env = to_env(ctx, &env)?.clone();
         let (rel_path, abs_path) = to_path(ctx, dir, path)?;
 
         let value = conv_err(
@@ -281,7 +289,7 @@ mod fs {
         let dir = take_dir_context(ctx, &loc)?;
         let [env, path] = take_exact(ctx, &loc, args)?;
 
-        let mut env = to_env(ctx, env)?;
+        let mut env = to_env(ctx, &env)?.clone();
         let (rel_path, abs_path) = to_path(ctx, dir, path)?;
 
         conv_err(
@@ -305,7 +313,7 @@ mod fs {
                 load::Error::CannotEmbed(data) => Err(Error::new(
                     ErrorKind::CannotEmbed(data.type_name()),
                     ctx,
-                    data.loc,
+                    data.loc.clone(),
                 )),
             },
         }
@@ -336,12 +344,12 @@ mod fs {
     fn to_path(
         ctx: &CallContext,
         dir: &DirContext,
-        path: MalData,
+        path: Rc<MalData>,
     ) -> Result<(String, PathBuf), Error> {
         let loc = path.loc.clone();
-        let rel_path = to_str(ctx, path)?;
+        let rel_path = to_str(ctx, &path)?;
 
-        let Some(abs_path) = dir.canonicalize(&rel_path) else {
+        let Some(abs_path) = dir.canonicalize(rel_path) else {
             return Err(Error::new(
                 ErrorKind::InvalidPath(rel_path.into()),
                 ctx,
@@ -349,7 +357,7 @@ mod fs {
             ));
         };
 
-        Ok((rel_path, abs_path))
+        Ok((rel_path.clone(), abs_path))
     }
 
     pub fn new_env(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
@@ -421,7 +429,7 @@ pub fn cmp(data: &mut Env) {
 }
 
 mod cmp {
-    use std::cmp::Ordering;
+    use std::{cmp::Ordering, rc::Rc};
 
     use crate::{
         reader::Location,
@@ -482,8 +490,8 @@ mod cmp {
 
     fn eq_iter<'a, T, U>(fst: T, snd: U) -> Result<bool, Error>
     where
-        T: ExactSizeIterator + Iterator<Item = &'a MalData>,
-        U: ExactSizeIterator + Iterator<Item = &'a MalData>,
+        T: ExactSizeIterator + Iterator<Item = &'a Rc<MalData>>,
+        U: ExactSizeIterator + Iterator<Item = &'a Rc<MalData>>,
     {
         if fst.len() != snd.len() {
             return Ok(false);
@@ -543,14 +551,14 @@ mod cmp {
 
     pub fn is_empty(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         all(loc, args, |value| {
-            Ok(match value.value {
+            Ok(match &value.value {
                 MalVal::List(list) => list.is_empty(),
                 MalVal::Vector(vec) => vec.is_empty(),
                 MalVal::Map(map) => map.is_empty(),
                 _ => {
                     return {
                         let kind = ErrorKind::InvalidOperation1("empty?", value.type_name());
-                        Err(Error::new(kind, ctx, value.loc))
+                        Err(Error::new(kind, ctx, value.loc.clone()))
                     }
                 }
             })
@@ -596,7 +604,7 @@ mod ds {
             return Err(Error::new(
                 ErrorKind::UnexpectedType(MalVal::INT, index.type_name()),
                 ctx,
-                index.loc,
+                index.loc.clone(),
             ));
         };
 
@@ -677,18 +685,18 @@ mod ds {
     pub fn remove_key(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value, key] = take_exact(ctx, &loc, args)?;
 
-        let MalVal::Map(mut map) = value.value else {
+        let MalVal::Map(mut map) = value.value.clone() else {
             return Err(Error::new(
                 ErrorKind::UnexpectedType(MalVal::HASH_MAP, value.type_name()),
                 ctx,
-                value.loc,
+                value.loc.clone(),
             ));
         };
 
         let key = to_key(ctx, key)?;
 
         let val = map.shift_remove(&key);
-        let map = MalVal::Map(map).with_loc(value.loc);
+        let map = MalVal::Map(map).with_loc(value.loc.clone());
 
         match val {
             Some(data) => Ok(list!(data, map).with_loc(loc)),
@@ -699,7 +707,7 @@ mod ds {
     pub fn count(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
 
-        Ok(MalVal::Int(match value.value {
+        Ok(MalVal::Int(match &value.value {
             MalVal::List(list) => list.len(),
             MalVal::Vector(vec) => vec.len(),
             MalVal::Map(map) => map.len(),
@@ -723,6 +731,8 @@ pub fn math(data: &mut Env) {
 }
 
 mod math {
+    use std::rc::Rc;
+
     use crate::{
         reader::Location,
         types::{CallContext, List, MalData, MalVal},
@@ -735,72 +745,76 @@ mod math {
         reduce(ctx, loc, args, add2)
     }
 
-    fn add2(ctx: &CallContext, fst: MalData, snd: MalData) -> Result<MalVal, Error> {
-        match (fst.value, snd.value) {
+    fn add2(ctx: &CallContext, fst: Rc<MalData>, snd: Rc<MalData>) -> Result<MalVal, Error> {
+        match (&fst.value, &snd.value) {
             (MalVal::Int(int), MalVal::Float(float)) | (MalVal::Float(float), MalVal::Int(int)) => {
-                Ok(MalVal::Float(float + (int as f64)))
+                Ok(MalVal::Float(float + (*int as f64)))
             }
             (MalVal::Int(a), MalVal::Int(b)) => Ok(MalVal::Int(a + b)),
             (MalVal::Float(a), MalVal::Float(b)) => Ok(MalVal::Float(a + b)),
             (MalVal::Str(a), MalVal::Str(b)) => Ok(MalVal::Str(format!("{a}{b}"))),
-            (MalVal::List(mut a), MalVal::List(mut b)) => {
+            (MalVal::List(a), MalVal::List(b)) => {
+                let (mut a, mut b) = (a.clone(), b.clone());
                 a.append(&mut b);
                 Ok(MalVal::List(a))
             }
-            (MalVal::List(mut a), MalVal::Vector(b)) => {
-                a.append(&mut List::from_vec(b));
+            (MalVal::List(a), MalVal::Vector(b)) => {
+                let mut a = a.clone();
+                a.append(&mut List::from_vec(b.to_vec()));
                 Ok(MalVal::List(a))
             }
-            (MalVal::Vector(mut a), MalVal::Vector(mut b)) => {
+            (MalVal::Vector(a), MalVal::Vector(b)) => {
+                let (mut a, mut b) = (a.clone(), b.clone());
                 a.append(&mut b);
                 Ok(MalVal::Vector(a))
             }
-            (MalVal::Vector(mut a), MalVal::List(b)) => {
-                a.append(&mut b.into_vec());
+            (MalVal::Vector(a), MalVal::List(b)) => {
+                let mut a = a.clone();
+                a.append(&mut b.clone().into_vec());
                 Ok(MalVal::Vector(a))
             }
-            vals => Err(op_error(ctx, fst.loc, "+", vals)),
+            vals => Err(op_error(ctx, fst.loc.clone(), "+", vals)),
         }
     }
 
     pub fn sub(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         reduce(ctx, loc, args, |ctx, fst, snd| {
-            match (fst.value, snd.value) {
+            match (&fst.value, &snd.value) {
                 (MalVal::Int(int), MalVal::Float(float))
                 | (MalVal::Float(float), MalVal::Int(int)) => {
-                    Ok(MalVal::Float(float - (int as f64)))
+                    Ok(MalVal::Float(float - (*int as f64)))
                 }
                 (MalVal::Int(a), MalVal::Int(b)) => Ok(MalVal::Int(a - b)),
                 (MalVal::Float(a), MalVal::Float(b)) => Ok(MalVal::Float(a - b)),
-                vals => Err(op_error(ctx, fst.loc, "-", vals)),
+                vals => Err(op_error(ctx, fst.loc.clone(), "-", vals)),
             }
         })
     }
 
     pub fn mul(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         reduce(ctx, loc, args, |ctx, fst, snd| {
-            match (fst.value, snd.value) {
+            match (&fst.value, &snd.value) {
                 (MalVal::Int(int), MalVal::Float(float))
                 | (MalVal::Float(float), MalVal::Int(int)) => {
-                    Ok(MalVal::Float(float * (int as f64)))
+                    Ok(MalVal::Float(float * (*int as f64)))
                 }
                 (MalVal::Int(a), MalVal::Int(b)) => Ok(MalVal::Int(a * b)),
                 (MalVal::Float(a), MalVal::Float(b)) => Ok(MalVal::Float(a * b)),
-                vals => Err(op_error(ctx, fst.loc, "*", vals)),
+                vals => Err(op_error(ctx, fst.loc.clone(), "*", vals)),
             }
         })
     }
 
     pub fn div(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         reduce(ctx, loc, args, |ctx, fst, snd| {
-            match (fst.value, snd.value) {
+            match (&fst.value, &snd.value) {
                 (MalVal::Int(int), MalVal::Float(float))
                 | (MalVal::Float(float), MalVal::Int(int)) => {
-                    Ok(MalVal::Float(float / (int as f64)))
+                    Ok(MalVal::Float(float / (*int as f64)))
                 }
                 (MalVal::Int(a), MalVal::Int(b)) => Ok(MalVal::Int(a / b)),
                 (MalVal::Float(a), MalVal::Float(b)) => Ok(MalVal::Float(a / b)),
-                vals => Err(op_error(ctx, fst.loc, "/", vals)),
+                vals => Err(op_error(ctx, fst.loc.clone(), "/", vals)),
             }
         })
     }
@@ -810,7 +824,7 @@ fn op_error(
     ctx: &CallContext,
     loc: Location,
     op: &'static str,
-    (fst, snd): (MalVal, MalVal),
+    (fst, snd): (&MalVal, &MalVal),
 ) -> Error {
     Error::new(
         ErrorKind::InvalidOperation {
@@ -823,72 +837,70 @@ fn op_error(
     )
 }
 
-fn to_env(ctx: &CallContext, value: MalData) -> Result<Env, Error> {
-    let MalVal::Env(env) = value.value else {
+fn to_env<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e Env, Error> {
+    let MalVal::Env(env) = &value.value else {
         return Err(Error::new(
             ErrorKind::UnexpectedType(MalVal::ENV, value.type_name()),
             ctx,
-            value.loc,
+            value.loc.clone(),
         ));
     };
 
     Ok(env)
 }
 
-fn to_key(ctx: &CallContext, value: MalData) -> Result<MalKey, Error> {
-    match MalKey::from_value(value.value) {
+fn to_key(ctx: &CallContext, value: Rc<MalData>) -> Result<MalKey, Error> {
+    match MalKey::from_value(value.value.clone()) {
         Ok(key) => Ok(key),
-        Err(key) => {
-            return Err(Error::new(
-                ErrorKind::InvalidMapKey(key.type_name()),
-                ctx,
-                value.loc,
-            ))
-        }
-    }
-}
-
-fn to_str(ctx: &CallContext, value: MalData) -> Result<String, Error> {
-    let MalVal::Str(key) = value.value else {
-        return {
-            Err(Error::new(
-                ErrorKind::UnexpectedType(MalVal::STR, value.type_name()),
-                ctx,
-                value.loc,
-            ))
-        };
-    };
-
-    Ok(key)
-}
-
-fn to_sym(ctx: &CallContext, value: MalData) -> Result<String, Error> {
-    let MalVal::Sym(key) = value.value else {
-        return {
-            Err(Error::new(
-                ErrorKind::UnexpectedType(MalVal::SYM, value.type_name()),
-                ctx,
-                value.loc,
-            ))
-        };
-    };
-
-    Ok(key)
-}
-
-fn to_list_like(ctx: &CallContext, value: MalData) -> Result<ListLike, Error> {
-    match value.value {
-        MalVal::List(list) => Ok(ListLike::List(list)),
-        MalVal::Vector(vec) => Ok(ListLike::Vector(vec)),
-        _ => Err(Error::new(
-            ErrorKind::UnexpectedType(MalVal::LIST_LIKE, value.type_name()),
+        Err(key) => Err(Error::new(
+            ErrorKind::InvalidMapKey(key.type_name()),
             ctx,
-            value.loc,
+            value.loc.clone(),
         )),
     }
 }
 
-fn all(loc: Location, args: List, cond: impl Fn(MalData) -> Result<bool, Error>) -> MalRet {
+fn to_str<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, Error> {
+    let MalVal::Str(key) = &value.value else {
+        return {
+            Err(Error::new(
+                ErrorKind::UnexpectedType(MalVal::STR, value.type_name()),
+                ctx,
+                value.loc.clone(),
+            ))
+        };
+    };
+
+    Ok(key)
+}
+
+fn to_sym<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, Error> {
+    let MalVal::Sym(key) = &value.value else {
+        return {
+            Err(Error::new(
+                ErrorKind::UnexpectedType(MalVal::SYM, value.type_name()),
+                ctx,
+                value.loc.clone(),
+            ))
+        };
+    };
+
+    Ok(key)
+}
+
+fn to_list_like(ctx: &CallContext, value: Rc<MalData>) -> Result<ListLike, Error> {
+    match &value.value {
+        MalVal::List(list) => Ok(ListLike::List(list.clone())),
+        MalVal::Vector(vec) => Ok(ListLike::Vector(vec.clone())),
+        _ => Err(Error::new(
+            ErrorKind::UnexpectedType(MalVal::LIST_LIKE, value.type_name()),
+            ctx,
+            value.loc.clone(),
+        )),
+    }
+}
+
+fn all(loc: Location, args: List, cond: impl Fn(Rc<MalData>) -> Result<bool, Error>) -> MalRet {
     for value in args {
         if !cond(value)? {
             return Ok(MalVal::Bool(false).with_loc(loc));
@@ -922,7 +934,7 @@ fn reduce(
     ctx: &CallContext,
     loc: Location,
     args: List,
-    join: impl Fn(&CallContext, MalData, MalData) -> Result<MalVal, Error>,
+    join: impl Fn(&CallContext, Rc<MalData>, Rc<MalData>) -> Result<MalVal, Error>,
 ) -> MalRet {
     let mut iter = args.into_iter();
     let Some(mut accum) = iter.next() else {
@@ -938,7 +950,7 @@ fn reduce(
 
 pub enum ListLike {
     List(List),
-    Vector(Vec<MalData>),
+    Vector(Vec<Rc<MalData>>),
 }
 
 impl ListLike {
@@ -963,7 +975,7 @@ impl ListLike {
         }
     }
 
-    pub fn swap_remove(&mut self, index: usize) -> MalData {
+    pub fn swap_remove(&mut self, index: usize) -> Rc<MalData> {
         match self {
             ListLike::List(list) => list.swap_remove(index),
             ListLike::Vector(vec) => vec.swap_remove(index),
@@ -972,7 +984,7 @@ impl ListLike {
 }
 
 impl IntoIterator for ListLike {
-    type Item = MalData;
+    type Item = Rc<MalData>;
     type IntoIter = ListLikeIter;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -985,11 +997,11 @@ impl IntoIterator for ListLike {
 
 pub enum ListLikeIter {
     List(<List as IntoIterator>::IntoIter),
-    Vector(<Vec<MalData> as IntoIterator>::IntoIter),
+    Vector(<Vec<Rc<MalData>> as IntoIterator>::IntoIter),
 }
 
 impl Iterator for ListLikeIter {
-    type Item = MalData;
+    type Item = Rc<MalData>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -1012,7 +1024,7 @@ fn take_atleast<const N: usize>(
     ctx: &CallContext,
     loc: &Location,
     mut list: List,
-) -> Result<([MalData; N], List), Error> {
+) -> Result<([Rc<MalData>; N], List), Error> {
     if list.len() < N {
         return Err(Error::new(
             ErrorKind::AtleastArityMismatch(N, list.len()),
@@ -1034,7 +1046,7 @@ fn take_exact<const N: usize>(
     ctx: &CallContext,
     loc: &Location,
     args: List,
-) -> Result<[MalData; N], Error> {
+) -> Result<[Rc<MalData>; N], Error> {
     match args.into_array::<N>() {
         Ok(arr) => Ok(arr),
         Err(list) => Err(Error::new(

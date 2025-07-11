@@ -1,4 +1,4 @@
-use std::{fmt, io, path::PathBuf};
+use std::{fmt, io, path::PathBuf, rc::Rc};
 
 use reader::Location;
 use types::{CallContext, MalData};
@@ -11,7 +11,7 @@ pub mod printer;
 pub mod reader;
 pub mod types;
 
-pub type MalRet = Result<MalData, Error>;
+pub type MalRet = Result<Rc<MalData>, Error>;
 
 #[derive(thiserror::Error, Debug)]
 pub struct Error {

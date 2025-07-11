@@ -30,12 +30,12 @@ pub fn shtml(
                     Element::Value(ast) => {
                         let data = env.eval(&ctx, ast).map_err(Error::SHtml)?;
 
-                        match data.value {
+                        match &data.value {
                             MalVal::List(list) if list.is_empty() => "".to_string(),
                             MalVal::Int(val) => val.to_string(),
                             MalVal::Float(val) => val.to_string(),
                             MalVal::Bool(val) => val.to_string(),
-                            MalVal::Str(val) => val,
+                            MalVal::Str(val) => val.to_string(),
                             _ => return Err(Error::CannotEmbed(data)),
                         }
                     }
@@ -55,7 +55,7 @@ pub fn mal(
     root: Rc<PathBuf>,
     rel_path: &str,
     abs_path: PathBuf,
-) -> Result<MalData, Error> {
+) -> Result<Rc<MalData>, Error> {
     let input = match fs::read_to_string(&abs_path) {
         Ok(input) => input,
         Err(e) => return Err(Error::Io(e)),
@@ -83,5 +83,5 @@ pub enum Error {
     Io(io::Error),
     Parse(String),
     SHtml(crate::Error),
-    CannotEmbed(MalData),
+    CannotEmbed(Rc<MalData>),
 }

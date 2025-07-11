@@ -209,7 +209,7 @@ fn read_dir(base: &Path, dir: &str) -> Result<std::fs::ReadDir, Error> {
         .map_err(|e| Error::ReadDir(dir.to_string(), e))
 }
 
-fn eval(env: &mut Env, root: Rc<PathBuf>, file: &str) -> Result<MalData, Error> {
+fn eval(env: &mut Env, root: Rc<PathBuf>, file: &str) -> Result<Rc<MalData>, Error> {
     let ast = parse_mal(&root, file)?;
     let ctx = create_call_context(root, file);
     Ok(env.eval(&ctx, ast)?)
@@ -225,7 +225,7 @@ fn read_file(base: &Path, file: &str) -> Result<String, Error> {
     std::fs::read_to_string(path).map_err(|e| Error::ReadFile(file.to_string(), e))
 }
 
-fn parse_mal(base: &Path, file: &str) -> Result<MalData, Error> {
+fn parse_mal(base: &Path, file: &str) -> Result<Rc<MalData>, Error> {
     let contents = read_file(base, file)?;
     let loc = Location::file(file);
     let vec = reader::parse(loc.clone(), &contents)

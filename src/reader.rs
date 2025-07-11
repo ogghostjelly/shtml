@@ -11,7 +11,7 @@ pub fn parse_file(loc: Location, input: &str) -> Result<Vec<Element>, Error> {
     shtml(Span { data: input, loc })
 }
 
-pub fn parse(loc: Location, input: &str) -> Result<Vec<MalData>, Error> {
+pub fn parse(loc: Location, input: &str) -> Result<Vec<Rc<MalData>>, Error> {
     if input.is_empty() {
         return Ok(vec![]);
     }
@@ -64,7 +64,7 @@ fn shtml(input: Span<'_>) -> Result<Vec<Element>, Error<'_>> {
     }
 }
 
-fn shtml_tag(input: Span<'_>) -> TResult<'_, MalData> {
+fn shtml_tag(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let (rest, _) = input.take_while(|ch| ch.is_whitespace());
 
     let sym_loc = rest.loc.clone();
@@ -91,7 +91,7 @@ fn shtml_tag(input: Span<'_>) -> TResult<'_, MalData> {
     Ok((next, list!(sym, map).with_loc(input.loc)))
 }
 
-fn shtml_tag_prop(input: Span<'_>) -> TResult<'_, (MalKey, MalData)> {
+fn shtml_tag_prop(input: Span<'_>) -> TResult<'_, (MalKey, Rc<MalData>)> {
     let (rest, key) = input.take_while(|ch| is_valid_char(ch) && ch != '=');
     let key = MalKey::Sym(key.data.to_string());
 
@@ -109,7 +109,7 @@ fn shtml_tag_prop(input: Span<'_>) -> TResult<'_, (MalKey, MalData)> {
 pub enum Element {
     Text(String),
     #[display("@{}", _0.value)]
-    Value(MalData),
+    Value(Rc<MalData>),
 }
 
 #[derive(Display, Debug, Clone, PartialEq)]
@@ -168,7 +168,7 @@ fn unescape_text(text: &str) -> String {
     text.replace("@@", "@")
 }
 
-fn value(input: Span<'_>) -> TResult<'_, Option<MalData>> {
+fn value(input: Span<'_>) -> TResult<'_, Option<Rc<MalData>>> {
     let (input, _) = input.take_while(|ch| ch.is_whitespace());
 
     let bool = Map(bool, Some);
@@ -190,7 +190,7 @@ fn value(input: Span<'_>) -> TResult<'_, Option<MalData>> {
     value.parse(input)
 }
 
-fn shorthand(input: Span<'_>) -> TResult<'_, MalData> {
+fn shorthand(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     Or(
         Or(Shorthand("'", "quote"), Shorthand("`", "quasiquote")),
         Or(Shorthand("~@", "splice-unquote"), Shorthand("~", "unquote")),
@@ -201,7 +201,7 @@ fn shorthand(input: Span<'_>) -> TResult<'_, MalData> {
 struct Shorthand(&'static str, &'static str);
 
 impl<'i> Parser<'i> for Shorthand {
-    type Output = MalData;
+    type Output = Rc<MalData>;
 
     fn parse(self, input: Span<'i>) -> TResult<'i, Self::Output> {
         let loc = input.loc.clone();
@@ -214,7 +214,7 @@ impl<'i> Parser<'i> for Shorthand {
     }
 }
 
-fn next_value(input: Span<'_>) -> TResult<'_, MalData> {
+fn next_value(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let (mut rest, mut val) = value(input)?;
 
     loop {
@@ -225,7 +225,7 @@ fn next_value(input: Span<'_>) -> TResult<'_, MalData> {
     }
 }
 
-fn hash_map(input: Span<'_>) -> TResult<'_, MalData> {
+fn hash_map(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
     let (rest, _) = Tag("{").parse(input)?;
 
@@ -250,22 +250,22 @@ fn hash_map(input: Span<'_>) -> TResult<'_, MalData> {
     Ok((rest, MalVal::Map(map).with_loc(loc)))
 }
 
-fn to_key(input: Span<'_>, data: MalData) -> TResult<'_, MalKey> {
-    match MalKey::from_value(data.value) {
+fn to_key(input: Span<'_>, data: Rc<MalData>) -> TResult<'_, MalKey> {
+    match MalKey::from_value(data.value.clone()) {
         Ok(key) => Ok((input, key)),
         Err(value) => Err(input.err(ErrorKind::MapBadKey(value.type_name()))),
     }
 }
 
-fn list(input: Span<'_>) -> TResult<'_, MalData> {
+fn list(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
-    Map(ListLike("(", ")"), |ls: Vec<MalData>| {
+    Map(ListLike("(", ")"), |ls: Vec<Rc<MalData>>| {
         MalVal::List(List::from_vec(ls)).with_loc(loc)
     })
     .parse(input)
 }
 
-fn vec(input: Span<'_>) -> TResult<'_, MalData> {
+fn vec(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
     Map(ListLike("[", "]"), |v| MalVal::Vector(v).with_loc(loc)).parse(input)
 }
@@ -273,7 +273,7 @@ fn vec(input: Span<'_>) -> TResult<'_, MalData> {
 struct ListLike(&'static str, &'static str);
 
 impl<'i> Parser<'i> for ListLike {
-    type Output = Vec<MalData>;
+    type Output = Vec<Rc<MalData>>;
 
     fn parse(self, input: Span<'i>) -> TResult<'i, Self::Output> {
         let (rest, _) = Tag(self.0).parse(input)?;
@@ -283,7 +283,7 @@ impl<'i> Parser<'i> for ListLike {
     }
 }
 
-fn elems(input: Span<'_>) -> TResult<'_, Vec<MalData>> {
+fn elems(input: Span<'_>) -> TResult<'_, Vec<Rc<MalData>>> {
     let mut elems = vec![];
     let (mut rest, _) = input.take_while(|ch| ch.is_whitespace());
 
@@ -295,7 +295,7 @@ fn elems(input: Span<'_>) -> TResult<'_, Vec<MalData>> {
     Ok((rest, elems))
 }
 
-fn ident(input: Span<'_>) -> TResult<'_, MalData> {
+fn ident(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
     let keyword = Map(keyword, |s: &str| MalVal::Kwd(s.to_string()));
     let symbol = Map(symbol, |s: &str| MalVal::Sym(s.to_string()));
@@ -321,7 +321,7 @@ fn is_valid_char(input: char) -> bool {
     !input.is_whitespace() && !"\"\'()[]{}<>".contains(input)
 }
 
-fn string(input: Span<'_>) -> TResult<'_, MalData> {
+fn string(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
     let (rest, _) = Tag("\"").parse(input)?;
 
@@ -355,14 +355,14 @@ fn comment(input: Span<'_>) -> TResult<'_, &str> {
     Ok((rest, comment.data))
 }
 
-fn bool(input: Span<'_>) -> TResult<'_, MalData> {
+fn bool(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
     let boo = Or(Map(Tag("true"), |_| true), Map(Tag("false"), |_| false));
     let val = Map(boo, |v| MalVal::Bool(v).with_loc(loc));
     val.parse(input)
 }
 
-fn num(input: Span<'_>) -> TResult<'_, MalData> {
+fn num(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
     let float = Map(float, MalVal::Float);
     let int = Map(int, MalVal::Int);
