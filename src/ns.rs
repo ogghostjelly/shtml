@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use indexmap::IndexMap;
+
 use crate::{
     env::Env,
     list, loc,
@@ -14,6 +16,7 @@ pub fn std(data: &mut Env) {
     ds(data);
     cmp(data);
     fmt(data);
+    env(data);
     std_mal(data);
     fs(data);
 }
@@ -252,14 +255,12 @@ pub fn fs(data: &mut Env) {
     data.set_fn(loc!(), "load-mal", fs::load_mal);
     data.set_fn(loc!(), "load-shtml", fs::load_shtml);
     data.set_fn(loc!(), "read-file", fs::read_file);
-    data.set_fn(loc!(), "new-env", fs::new_env);
 }
 
 mod fs {
     use std::{fs, path::PathBuf, rc::Rc};
 
     use crate::{
-        env::Env,
         list, load,
         ns::to_str,
         reader::Location,
@@ -358,11 +359,6 @@ mod fs {
         };
 
         Ok((rel_path.clone(), abs_path))
-    }
-
-    pub fn new_env(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [] = take_exact(ctx, &loc, args)?;
-        Ok(MalVal::Env(Env::std()).with_loc(loc))
     }
 
     pub fn file(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
@@ -566,6 +562,70 @@ mod cmp {
     }
 }
 
+pub fn env(data: &mut Env) {
+    data.set_fn(loc!(), "new-env", env::new_env);
+    data.set_fn(loc!(), "env/set", env::set);
+    data.set_fn(loc!(), "env/sets", env::sets);
+    data.set_fn(loc!(), "env/get", env::get);
+}
+
+mod env {
+    use std::rc::Rc;
+
+    use crate::{
+        env::Env,
+        reader::Location,
+        types::{CallContext, List, MalKey, MalVal},
+        Error, ErrorKind, MalRet,
+    };
+
+    use super::{take_exact, to_env, to_hash_map, to_sym};
+
+    pub fn new_env(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [] = take_exact(ctx, &loc, args)?;
+        Ok(MalVal::Env(Env::std()).with_loc(loc))
+    }
+
+    pub fn set(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [env, key, value] = take_exact(ctx, &loc, args)?;
+        let mut env = to_env(ctx, &env)?.clone();
+        let key = to_sym(ctx, &key)?.clone();
+
+        env.set(key, value);
+
+        Ok(MalVal::Env(env).with_loc(loc))
+    }
+
+    pub fn sets(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [env, kvps] = take_exact(ctx, &loc, args)?;
+        let mut env = to_env(ctx, &env)?.clone();
+        let kvps = to_hash_map(ctx, &kvps)?;
+
+        for (key, value) in kvps {
+            let MalKey::Sym(key) = key else {
+                return Err(Error::new(
+                    ErrorKind::UnexpectedType(MalVal::SYM, key.type_name()),
+                    ctx,
+                    loc,
+                ));
+            };
+
+            env.set(key.clone(), value.clone());
+        }
+
+        Ok(MalVal::Env(env).with_loc(loc))
+    }
+
+    pub fn get(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [env, key] = take_exact(ctx, &loc, args)?;
+        let env = to_env(ctx, &env)?;
+        let key = to_sym(ctx, &key)?;
+
+        let value = env.get(ctx, &loc, key)?;
+        Ok(Rc::clone(value))
+    }
+}
+
 pub fn ds(data: &mut Env) {
     data.set_fn(loc!(), "hash-map", ds::hash_map);
     data.set_fn(loc!(), "list", ds::list);
@@ -578,8 +638,6 @@ pub fn ds(data: &mut Env) {
     data.set_fn(loc!(), "rest", ds::rest);
     data.set_fn(loc!(), "nth", ds::nth);
 
-    data.set_fn(loc!(), "remove-key", ds::remove_key);
-
     data.set_fn(loc!(), "count", ds::count);
 }
 
@@ -587,7 +645,6 @@ mod ds {
     use indexmap::IndexMap;
 
     use crate::{
-        list,
         reader::Location,
         types::{CallContext, List, MalVal},
         Error, ErrorKind, MalRet,
@@ -680,28 +737,6 @@ mod ds {
 
     pub fn vec(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
         Ok(MalVal::Vector(args.into_vec()).with_loc(loc))
-    }
-
-    pub fn remove_key(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value, key] = take_exact(ctx, &loc, args)?;
-
-        let MalVal::Map(mut map) = value.value.clone() else {
-            return Err(Error::new(
-                ErrorKind::UnexpectedType(MalVal::HASH_MAP, value.type_name()),
-                ctx,
-                value.loc.clone(),
-            ));
-        };
-
-        let key = to_key(ctx, key)?;
-
-        let val = map.shift_remove(&key);
-        let map = MalVal::Map(map).with_loc(value.loc.clone());
-
-        match val {
-            Some(data) => Ok(list!(data, map).with_loc(loc)),
-            None => Ok(list!(list!().with_loc(loc.clone()), map).with_loc(loc)),
-        }
     }
 
     pub fn count(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
@@ -835,6 +870,21 @@ fn op_error(
         ctx,
         loc,
     )
+}
+
+fn to_hash_map<'e>(
+    ctx: &CallContext,
+    value: &'e Rc<MalData>,
+) -> Result<&'e IndexMap<MalKey, Rc<MalData>>, Error> {
+    let MalVal::Map(map) = &value.value else {
+        return Err(Error::new(
+            ErrorKind::UnexpectedType(MalVal::HASH_MAP, value.type_name()),
+            ctx,
+            value.loc.clone(),
+        ));
+    };
+
+    Ok(map)
 }
 
 fn to_env<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e Env, Error> {

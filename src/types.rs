@@ -246,6 +246,16 @@ impl MalKey {
             MalKey::Sym(value) => MalVal::Sym(value),
         }
     }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            MalKey::Bool(_) => MalVal::BOOL,
+            MalKey::Int(_) => MalVal::INT,
+            MalKey::Kwd(_) => MalVal::KWD,
+            MalKey::Str(_) => MalVal::STR,
+            MalKey::Sym(_) => MalVal::SYM,
+        }
+    }
 }
 
 pub struct CallContext {
