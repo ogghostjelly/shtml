@@ -380,7 +380,7 @@ impl CallContext {
 
     pub fn std() -> Self {
         Self {
-            frame: Some(("std".into(), Location::new(Rc::new("lib.mal".into()), 1, 1))),
+            frame: Some(("std".into(), Location::new(Rc::new("std.mal".into()), 1, 1))),
             frames: vec![],
             file: None,
             dir: None,

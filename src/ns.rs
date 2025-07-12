@@ -17,18 +17,18 @@ pub fn std(data: &mut Env) {
     cmp(data);
     fmt(data);
     env(data);
-    std_mal(data);
     fs(data);
+    std_mal(data);
 }
 
 fn std_mal(data: &mut Env) {
     let ast = reader::parse(Location::file("std.mal"), include_str!("std.mal"))
-        .expect("parsing 'lib.mal' should never fail");
+        .expect("parsing 'std.mal' should never fail");
 
     for value in ast {
         _ = data
             .eval(&CallContext::std(), value)
-            .expect("evaluating 'lib.mal' should never fail")
+            .expect("evaluating 'std.mal' should never fail")
     }
 }
 
@@ -405,10 +405,10 @@ mod fmt {
 
 pub fn cmp(data: &mut Env) {
     data.set_fn(loc!(), "=", cmp::eq);
-    data.set_fn(loc!(), "lt", cmp::lt);
-    data.set_fn(loc!(), "lt=", cmp::lte);
-    data.set_fn(loc!(), "gt", cmp::gt);
-    data.set_fn(loc!(), "gt=", cmp::gte);
+    data.set_fn(loc!(), "<", cmp::lt);
+    data.set_fn(loc!(), "<=", cmp::lte);
+    data.set_fn(loc!(), ">", cmp::gt);
+    data.set_fn(loc!(), ">=", cmp::gte);
 
     data.set_fn(loc!(), "not", cmp::not);
 
@@ -626,9 +626,12 @@ pub fn ds(data: &mut Env) {
     data.set_fn(loc!(), "cons", ds::cons);
     data.set_fn(loc!(), "concat", ds::concat);
 
-    data.set_fn(loc!(), "first", ds::first);
+    data.set_fn(loc!(), "fst", ds::fst);
+    data.set_fn(loc!(), "snd", ds::snd);
     data.set_fn(loc!(), "rest", ds::rest);
     data.set_fn(loc!(), "nth", ds::nth);
+
+    data.set_fn(loc!(), "map/take", ds::map_take);
 
     data.set_fn(loc!(), "count", ds::count);
 }
@@ -637,12 +640,13 @@ mod ds {
     use indexmap::IndexMap;
 
     use crate::{
+        list,
         reader::Location,
         types::{CallContext, List, MalVal},
         Error, ErrorKind, MalRet,
     };
 
-    use super::{take_exact, to_key, to_list_like};
+    use super::{take_exact, to_hash_map, to_key, to_list_like};
 
     pub fn nth(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value, index] = take_exact(ctx, &loc, args)?;
@@ -668,11 +672,23 @@ mod ds {
         Ok(value.swap_remove(index as usize))
     }
 
-    pub fn first(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+    pub fn fst(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
         let mut value = to_list_like(ctx, value)?.to_list();
         let Some(value) = value.pop_front() else {
-            return Err(Error::new(ErrorKind::FirstOfEmptyList, ctx, loc));
+            return Err(Error::new(ErrorKind::ListSize("fst".into(), 1), ctx, loc));
+        };
+        Ok(value)
+    }
+
+    pub fn snd(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [value] = take_exact(ctx, &loc, args)?;
+        let mut value = to_list_like(ctx, value)?.to_list();
+        let Some(_) = value.pop_front() else {
+            return Err(Error::new(ErrorKind::ListSize("snd".into(), 2), ctx, loc));
+        };
+        let Some(value) = value.pop_front() else {
+            return Err(Error::new(ErrorKind::ListSize("snd".into(), 2), ctx, loc));
         };
         Ok(value)
     }
@@ -729,6 +745,22 @@ mod ds {
 
     pub fn vec(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
         Ok(MalVal::Vector(args.into_vec()).with_loc(loc))
+    }
+
+    pub fn map_take(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [map_dat, key] = take_exact(ctx, &loc, args)?;
+        let mut map = to_hash_map(ctx, &map_dat)?.clone();
+        let key = to_key(ctx, key)?;
+
+        let Some(value) = map.shift_remove(&key) else {
+            return Err(Error::new(
+                ErrorKind::MapKeyNotFound(key.into_value()),
+                ctx,
+                loc,
+            ));
+        };
+
+        Ok(list!(value, MalVal::Map(map).with_loc(map_dat.loc.clone())).with_loc(loc))
     }
 
     pub fn count(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {

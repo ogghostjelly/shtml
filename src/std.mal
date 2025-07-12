@@ -9,9 +9,15 @@
 (def! cond (macro (fn*
     [& xs]
     (if (not (empty? xs))
-        (list 'if (first xs)
-            (if (gt (count xs) 1)
+        (list 'if (fst xs)
+            (if (> (count xs) 1)
                 (nth xs 1)
                 (throw "odd number of forms to cond"))
             (cons 'cond (rest (rest xs))))
         '()))))
+
+(defn! include
+    [params]
+    (def! params (map/take params 'src))
+    (def! e (env/sets (new-env) (snd params)))
+    (load-shtml e (fst params)))

@@ -1,7 +1,7 @@
 use std::{fmt, io, path::PathBuf, rc::Rc};
 
 use reader::Location;
-use types::{CallContext, MalData};
+use types::{CallContext, MalData, MalVal};
 
 pub mod cli;
 pub mod env;
@@ -60,6 +60,8 @@ pub enum ErrorKind {
     UnevenArguments(&'static str),
     #[error("'{0}' cannot be a map key")]
     InvalidMapKey(&'static str),
+    #[error("key in map '{0}' not found")]
+    MapKeyNotFound(MalVal),
     #[error("expected {0} arguments but got {1}")]
     ArityMismatch(usize, usize),
     #[error("expected at least {0} arguments but got {1}")]
@@ -70,8 +72,8 @@ pub enum ErrorKind {
     OutsideOfQuasiquote(&'static str),
     #[error("index out of range {0} for list of size {1}")]
     IndexOutOfRange(i64, usize),
-    #[error("cannot use 'first' on an empty list")]
-    FirstOfEmptyList,
+    #[error("cannot use '{0}', list must have at least {1} elements")]
+    ListSize(String, usize),
     #[error("denied access to filesystem, you cannot use the filesystem functions")]
     DeniedFsAccess,
     #[error("invalid path '{}'", _0.display())]
