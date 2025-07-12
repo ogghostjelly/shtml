@@ -1,3 +1,3 @@
 - [ ] Eval map keys instead of just including them raw
 - [ ] Make print accept multiple arguments and return nothing, and another function that prints and returns
-- [ ] Should I add null?
+- [ ] Errors as values would be interesting, they would work just like nil but instead contain extra data about their origin and display that data when it crashes

@@ -37,12 +37,13 @@ pub enum MalVal {
     ),
     Fn(MalFn),
     Env(Env),
+    Nil,
 }
 
 impl MalData {
     pub fn is_true(&self) -> bool {
         match &self.value {
-            MalVal::List(list) => !list.is_empty(),
+            MalVal::Nil => false,
             MalVal::Bool(value) => *value,
             _ => true,
         }
@@ -71,6 +72,7 @@ impl MalVal {
     pub const FN: &str = "function";
     pub const MACRO: &str = "macro";
     pub const ENV: &str = "env";
+    pub const NIL: &str = "nil";
 
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -86,6 +88,7 @@ impl MalVal {
             MalVal::BuiltinFn(_, _) | MalVal::Fn { .. } => Self::FN,
             MalVal::Special(_, _) => Self::MACRO,
             MalVal::Env(_) => Self::ENV,
+            MalVal::Nil => Self::NIL,
         }
     }
 }

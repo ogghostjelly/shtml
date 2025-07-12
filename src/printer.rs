@@ -63,6 +63,7 @@ fn display(value: &MalVal, f: &mut fmt::Formatter<'_>, mut quote: bool) -> fmt::
             ..
         }) => write!(f, "#<macro>"),
         MalVal::Env(env) => write!(f, "#<env:{}>", env.name()),
+        MalVal::Nil => write!(f, "nil"),
     }
 }
 

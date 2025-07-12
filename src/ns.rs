@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::{
     env::Env,
-    list, loc,
+    loc,
     reader::{self, Location},
     types::{CallContext, List, MalData, MalFn, MalKey, MalVal},
     Error, ErrorKind, MalRet,
@@ -50,7 +50,6 @@ mod sform {
 
     use crate::{
         env::{Env, TcoRet, TcoVal},
-        list,
         ns::take_atleast,
         reader::Location,
         types::{CallContext, List, MalFn, MalVal},
@@ -168,7 +167,7 @@ mod sform {
 
         env.set(key, Rc::new(value));
 
-        Ok(TcoVal::Val(list!().with_loc(loc)))
+        Ok(TcoVal::Val(MalVal::Nil.with_loc(loc)))
     }
 
     pub fn r#do(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
@@ -184,7 +183,7 @@ mod sform {
 
         match last {
             Some(last) => Ok(TcoVal::Unevaluated(last)),
-            None => Ok(TcoVal::Val(list!().with_loc(loc))),
+            None => Ok(TcoVal::Val(MalVal::Nil.with_loc(loc))),
         }
     }
 
@@ -253,7 +252,7 @@ mod fs {
     use std::{fs, path::PathBuf, rc::Rc};
 
     use crate::{
-        list, load,
+        load,
         ns::to_str,
         reader::Location,
         types::{CallContext, DirContext, List, MalData, MalVal},
@@ -350,7 +349,7 @@ mod fs {
 
         match ctx.file() {
             Some(path) => Ok(MalVal::Str(path.to_string()).with_loc(loc)),
-            None => Ok(list!().with_loc(loc)),
+            None => Ok(MalVal::Nil.with_loc(loc)),
         }
     }
 }
@@ -694,7 +693,7 @@ mod ds {
         let [value] = take_exact(ctx, &loc, args)?;
         let mut value = to_list_like(ctx, value)?.to_list();
         let Some(value) = value.pop_front() else {
-            return Ok(list!().with_loc(loc));
+            return Ok(MalVal::Nil.with_loc(loc));
         };
         Ok(value)
     }
@@ -703,10 +702,10 @@ mod ds {
         let [value] = take_exact(ctx, &loc, args)?;
         let mut value = to_list_like(ctx, value)?.to_list();
         let Some(_) = value.pop_front() else {
-            return Ok(list!().with_loc(loc));
+            return Ok(MalVal::Nil.with_loc(loc));
         };
         let Some(value) = value.pop_front() else {
-            return Ok(list!().with_loc(loc));
+            return Ok(MalVal::Nil.with_loc(loc));
         };
         Ok(value)
     }
@@ -828,7 +827,7 @@ mod string {
                         MalVal::Str(r.to_string()).with_loc(loc.clone())
                     )
                     .with_loc(loc)),
-                    None => Ok(list!().with_loc(loc)),
+                    None => Ok(MalVal::Nil.with_loc(loc)),
                 }
             }
         };
@@ -1058,7 +1057,7 @@ fn all_reduce(
 ) -> MalRet {
     let mut iter = args.into_iter();
     let Some(mut last) = iter.next() else {
-        return Ok(list!().with_loc(loc));
+        return Ok(MalVal::Nil.with_loc(loc));
     };
 
     for value in iter {
@@ -1080,7 +1079,7 @@ fn reduce(
 ) -> MalRet {
     let mut iter = args.into_iter();
     let Some(mut accum) = iter.next() else {
-        return Ok(list!().with_loc(loc));
+        return Ok(MalVal::Nil.with_loc(loc));
     };
 
     for value in iter {

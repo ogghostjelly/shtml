@@ -140,6 +140,7 @@ impl Env {
                 }
                 MalVal::Sym(sym) => return self.get(ctx, &ast.loc, sym).cloned(),
                 MalVal::Str(_)
+                | MalVal::Nil
                 | MalVal::Env(_)
                 | MalVal::BuiltinFn(_, _)
                 | MalVal::Fn { .. }
@@ -264,6 +265,7 @@ impl Env {
             }
             MalVal::Special(_, f) => f(ctx, self, (vals.clone(), loc.clone())),
             MalVal::List(_)
+            | MalVal::Nil
             | MalVal::Env(_)
             | MalVal::Vector(_)
             | MalVal::Map(_)

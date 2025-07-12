@@ -31,7 +31,7 @@ pub fn shtml(
                         let data = env.eval(&ctx, ast).map_err(Error::SHtml)?;
 
                         match &data.value {
-                            MalVal::List(list) if list.is_empty() => "".to_string(),
+                            MalVal::Nil => "".to_string(),
                             MalVal::Int(val) => val.to_string(),
                             MalVal::Float(val) => val.to_string(),
                             MalVal::Bool(val) => val.to_string(),
