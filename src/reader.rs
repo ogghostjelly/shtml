@@ -174,7 +174,8 @@ fn value(input: Span<'_>) -> TResult<'_, Option<Rc<MalData>>> {
     let bool = Map(bool, Some);
     let num = Map(num, Some);
     let string = Map(string, Some);
-    let atom = or(or(bool, num), string);
+    let nil = Map(nil, Some);
+    let atom = or(or(or(bool, num), string), nil);
 
     let comment = Map(comment, |_: &str| None);
     let ident = Map(ident, Some);
@@ -307,6 +308,11 @@ fn symbol(input: Span<'_>) -> TResult<'_, &str> {
         return Err(input.err(ErrorKind::Symbol));
     };
     Ok((rest, symbol.data))
+}
+
+fn nil(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
+    let loc = input.loc.clone();
+    Map(Tag("nil"), |_| MalVal::Nil.with_loc(loc)).parse(input)
 }
 
 fn keyword(input: Span<'_>) -> TResult<'_, &str> {

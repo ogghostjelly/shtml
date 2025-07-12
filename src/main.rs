@@ -189,7 +189,7 @@ fn build_shtml_file(env: &Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Resu
                 let data = env.clone().eval(&ctx, ast).map_err(Error::Shtml)?;
 
                 match &data.value {
-                    MalVal::List(list) if list.is_empty() => "".to_string(),
+                    MalVal::Nil => "".to_string(),
                     MalVal::Str(value) => value.to_string(),
                     MalVal::Int(value) => value.to_string(),
                     MalVal::Float(value) => value.to_string(),

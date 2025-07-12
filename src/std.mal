@@ -41,10 +41,14 @@
         (= (len args) 0) (name-from-path path)
 
         ; Else just crash
-        true (error "Bad arguments")))
+        true (throw "Bad arguments")))
     
     ; Read and evaluate the file in a new environment
     (def! value (load-mal (new-env) path))
 
     ; Set name to the evaluated value
     `(def! ~name ~value))
+
+(defmacro! #
+    [& xs]
+    `(do ~@xs nil))
