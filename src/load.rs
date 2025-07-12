@@ -7,8 +7,8 @@ use crate::{
 };
 
 pub fn shtml(
+    ctx: &CallContext,
     env: &mut Env,
-    root: Rc<PathBuf>,
     rel_path: &str,
     abs_path: PathBuf,
 ) -> Result<String, Error> {
@@ -21,7 +21,7 @@ pub fn shtml(
 
     match reader::parse_file(file_loc.clone(), &input) {
         Ok(els) => {
-            let ctx = CallContext::new(root, abs_path);
+            let ctx = ctx.inner(rel_path);
             let mut value = String::new();
 
             for el in els {
@@ -51,8 +51,8 @@ pub fn shtml(
 }
 
 pub fn mal(
+    ctx: &CallContext,
     env: &mut Env,
-    root: Rc<PathBuf>,
     rel_path: &str,
     abs_path: PathBuf,
 ) -> Result<Rc<MalData>, Error> {
@@ -68,7 +68,7 @@ pub fn mal(
             let mut vals = List::from_vec(vals);
             vals.push_front(MalVal::Sym("do".into()).with_loc(file_loc.clone()));
 
-            let ctx = CallContext::new(root, abs_path);
+            let ctx = ctx.inner(rel_path);
             let ret = env
                 .eval(&ctx, MalVal::List(vals).with_loc(file_loc))
                 .map_err(Error::SHtml)?;

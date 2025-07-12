@@ -277,11 +277,7 @@ mod fs {
         let mut env = to_env(ctx, &env)?.clone();
         let (rel_path, abs_path) = to_path(ctx, dir, path)?;
 
-        let value = conv_err(
-            load::shtml(&mut env, dir.root(), &rel_path, abs_path),
-            ctx,
-            &loc,
-        )?;
+        let value = conv_err(load::shtml(ctx, &mut env, &rel_path, abs_path), ctx, &loc)?;
 
         Ok(MalVal::Str(value).with_loc(loc))
     }
@@ -293,11 +289,7 @@ mod fs {
         let mut env = to_env(ctx, &env)?.clone();
         let (rel_path, abs_path) = to_path(ctx, dir, path)?;
 
-        conv_err(
-            load::mal(&mut env, dir.root(), &rel_path, abs_path),
-            ctx,
-            &loc,
-        )
+        conv_err(load::mal(ctx, &mut env, &rel_path, abs_path), ctx, &loc)
     }
 
     fn conv_err<T>(
@@ -365,7 +357,7 @@ mod fs {
         let [] = take_exact(ctx, &loc, args)?;
 
         match ctx.file() {
-            Some(path) => Ok(MalVal::Str(path.to_string_lossy().into()).with_loc(loc)),
+            Some(path) => Ok(MalVal::Str(path.to_string()).with_loc(loc)),
             None => Ok(list!().with_loc(loc)),
         }
     }

@@ -260,7 +260,7 @@ impl MalKey {
 
 pub struct CallContext {
     /// The current file that is executing the function.
-    file: Option<Rc<PathBuf>>,
+    file: Option<Rc<String>>,
     dir: Option<DirContext>,
     /// The name of the function being called.
     frame: Option<(String, Location)>,
@@ -276,8 +276,21 @@ pub struct DirContext {
 }
 
 impl DirContext {
-    pub fn root(&self) -> Rc<PathBuf> {
-        Rc::clone(&self.root)
+    pub fn root(&self) -> &Rc<PathBuf> {
+        &self.root
+    }
+
+    pub fn new(root: Rc<PathBuf>, file: &str) -> DirContext {
+        let dir = root
+            .join(file)
+            .parent()
+            .expect("File must have a parent")
+            .to_path_buf();
+
+        DirContext {
+            dir: Rc::new(dir),
+            root,
+        }
     }
 
     pub fn canonicalize<P: AsRef<Path>>(&self, path: P) -> Option<PathBuf> {
@@ -315,7 +328,7 @@ impl CallContext {
         self.frame.as_ref().map(|(x, _)| x.as_str())
     }
 
-    pub fn file(&self) -> Option<&Path> {
+    pub fn file(&self) -> Option<&str> {
         match &self.file {
             Some(file) => Some(file),
             None => None,
@@ -340,17 +353,25 @@ impl CallContext {
         }
     }
 
-    pub fn new(root: Rc<PathBuf>, file: PathBuf) -> Self {
-        let dir = file
-            .parent()
-            .expect("File must have a parent")
-            .to_path_buf();
+    pub fn with_fs(root: Rc<PathBuf>, file: impl Into<String>) -> CallContext {
+        let file = file.into();
 
         Self {
-            dir: Some(DirContext {
-                dir: Rc::new(dir),
-                root,
-            }),
+            dir: Some(DirContext::new(root, &file)),
+            file: Some(Rc::new(file)),
+            frame: None,
+            frames: vec![],
+        }
+    }
+
+    pub fn inner(&self, file: impl Into<String>) -> Self {
+        let file = file.into();
+
+        Self {
+            dir: self
+                .dir
+                .as_ref()
+                .map(|ctx| DirContext::new(Rc::clone(&ctx.root), &file)),
             file: Some(Rc::new(file)),
             frame: None,
             frames: vec![],

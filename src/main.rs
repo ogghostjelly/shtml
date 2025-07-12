@@ -180,8 +180,7 @@ fn build_shtml_file(mut env: Env, from: Rc<PathBuf>, to: &Path, path: &str) -> R
     let mut out = fs::File::create_new(to.join(path).with_extension("html"))
         .map_err(|e| Error::CreateFile(path.to_string(), e))?;
 
-    let file = from.join(path);
-    let ctx = CallContext::new(from, file);
+    let ctx = CallContext::with_fs(from, path);
 
     for el in els {
         let text = match el {
@@ -211,13 +210,8 @@ fn read_dir(base: &Path, dir: &str) -> Result<std::fs::ReadDir, Error> {
 
 fn eval(env: &mut Env, root: Rc<PathBuf>, file: &str) -> Result<Rc<MalData>, Error> {
     let ast = parse_mal(&root, file)?;
-    let ctx = create_call_context(root, file);
+    let ctx = CallContext::with_fs(root, file);
     Ok(env.eval(&ctx, ast)?)
-}
-
-fn create_call_context(root: Rc<PathBuf>, file: &str) -> CallContext {
-    let file = root.join(file);
-    CallContext::new(root, file)
 }
 
 fn read_file(base: &Path, file: &str) -> Result<String, Error> {
