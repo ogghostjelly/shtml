@@ -3,7 +3,8 @@
 
 <head>
     @; Equivalent to: @(include "#head.html" {title "ogghostjelly's hangout" color "#551a8b"})
-    <x@include src="#head.shtml" description="This is my website!" title="ogghostjelly's hangout" color="#551a8b" />
+    <x@include src="#head.shtml" description="This is my website!" title="ogghostjelly's hangout" color="#551a8b"
+        keywords="Main Page, Other Keyword" />
 </head>
 
 <body>

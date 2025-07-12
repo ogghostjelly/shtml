@@ -19,7 +19,6 @@ pub fn std(data: &mut Env) {
     env(data);
     fs(data);
     string(data);
-    time(data);
     std_mal(data);
 }
 
@@ -585,7 +584,6 @@ mod env {
     use std::rc::Rc;
 
     use crate::{
-        env::Env,
         reader::Location,
         types::{CallContext, List, MalKey, MalVal},
         Error, ErrorKind, MalRet,
@@ -595,7 +593,7 @@ mod env {
 
     pub fn new_env(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [] = take_exact(ctx, &loc, args)?;
-        Ok(MalVal::Env(Env::std()).with_loc(loc))
+        Ok(MalVal::Env(ctx.new_env()).with_loc(loc))
     }
 
     pub fn set(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
@@ -799,24 +797,6 @@ mod ds {
             }
         } as i64)
         .with_loc(loc))
-    }
-}
-
-pub fn time(data: &mut Env) {
-    data.set_fn(loc!(), "time/now", time::now);
-}
-
-mod time {
-    use crate::{
-        ns::take_exact,
-        reader::Location,
-        types::{CallContext, List, MalVal},
-        MalRet,
-    };
-
-    pub fn now(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [] = take_exact(ctx, &loc, args)?;
-        Ok(MalVal::Str(format!("{:?}", std::time::SystemTime::now()).to_string()).with_loc(loc))
     }
 }
 

@@ -265,6 +265,8 @@ pub struct CallContext {
     /// The name of the function being called.
     frame: Option<(String, Location)>,
     frames: Vec<(String, Location)>,
+    /// The environment returned from `(new-env)`
+    default_env: Rc<Env>,
 }
 
 #[derive(Clone)]
@@ -313,7 +315,12 @@ impl CallContext {
             frames: self.frames(),
             file: self.file.clone(),
             dir: self.dir.clone(),
+            default_env: Rc::clone(&self.default_env),
         }
+    }
+
+    pub fn new_env(&self) -> Env {
+        (*self.default_env).clone()
     }
 
     pub fn frames(&self) -> Vec<(String, Location)> {
@@ -350,10 +357,11 @@ impl CallContext {
                 root: Rc::clone(&dir),
                 dir,
             }),
+            default_env: Rc::new(Env::std()),
         }
     }
 
-    pub fn with_fs(root: Rc<PathBuf>, file: impl Into<String>) -> CallContext {
+    pub fn with_fs(default_env: Env, root: Rc<PathBuf>, file: impl Into<String>) -> CallContext {
         let file = file.into();
 
         Self {
@@ -361,6 +369,7 @@ impl CallContext {
             file: Some(Rc::new(file)),
             frame: None,
             frames: vec![],
+            default_env: Rc::new(default_env),
         }
     }
 
@@ -375,6 +384,7 @@ impl CallContext {
             file: Some(Rc::new(file)),
             frame: None,
             frames: vec![],
+            default_env: Rc::clone(&self.default_env),
         }
     }
 
@@ -384,6 +394,7 @@ impl CallContext {
             frames: vec![],
             file: None,
             dir: None,
+            default_env: Rc::new(Env::empty("std".into())),
         }
     }
 }

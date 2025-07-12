@@ -21,6 +21,14 @@ impl Env {
         &self.name
     }
 
+    pub fn empty(name: String) -> Self {
+        Self {
+            name,
+            data: HashMap::new(),
+            outer: None,
+        }
+    }
+
     pub fn std() -> Self {
         let mut env = Self {
             name: "std".into(),

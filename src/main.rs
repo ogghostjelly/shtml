@@ -160,7 +160,7 @@ fn rec_dir(
             rec_dir(env, Rc::clone(&from), to, &rel_path, allow)?;
         } else if metadata.is_file() {
             if filename.ends_with(".shtml") {
-                build_shtml_file(env.clone(), Rc::clone(&from), to, &rel_path)?;
+                build_shtml_file(env, Rc::clone(&from), to, &rel_path)?;
             } else {
                 fs::copy(path, out).map_err(|e| Error::CopySiteFile(rel_path, e))?;
             }
@@ -170,7 +170,7 @@ fn rec_dir(
     Ok(())
 }
 
-fn build_shtml_file(mut env: Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Result<(), Error> {
+fn build_shtml_file(env: &Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Result<(), Error> {
     let input = read_file(&from, path)?;
 
     let loc = Location::file(path);
@@ -180,14 +180,22 @@ fn build_shtml_file(mut env: Env, from: Rc<PathBuf>, to: &Path, path: &str) -> R
     let mut out = fs::File::create_new(to.join(path).with_extension("html"))
         .map_err(|e| Error::CreateFile(path.to_string(), e))?;
 
-    let ctx = CallContext::with_fs(from, path);
+    let ctx = CallContext::with_fs(env.clone(), from, path);
 
     for el in els {
         let text = match el {
             Element::Text(text) => text,
             Element::Value(ast) => {
-                let data = env.eval(&ctx, ast).map_err(Error::Shtml)?;
-                format!("{}", data.value) // TODO: Crash if the value is not a string or an empty list
+                let data = env.clone().eval(&ctx, ast).map_err(Error::Shtml)?;
+
+                match &data.value {
+                    MalVal::List(list) if list.is_empty() => "".to_string(),
+                    MalVal::Str(value) => value.to_string(),
+                    MalVal::Int(value) => value.to_string(),
+                    MalVal::Float(value) => value.to_string(),
+                    MalVal::Bool(value) => value.to_string(),
+                    _ => todo!(),
+                }
             }
         };
 
@@ -210,7 +218,7 @@ fn read_dir(base: &Path, dir: &str) -> Result<std::fs::ReadDir, Error> {
 
 fn eval(env: &mut Env, root: Rc<PathBuf>, file: &str) -> Result<Rc<MalData>, Error> {
     let ast = parse_mal(&root, file)?;
-    let ctx = CallContext::with_fs(root, file);
+    let ctx = CallContext::with_fs(env.clone(), root, file);
     Ok(env.eval(&ctx, ast)?)
 }
 
