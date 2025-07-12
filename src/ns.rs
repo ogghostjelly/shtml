@@ -6,7 +6,7 @@ use crate::{
     env::Env,
     list, loc,
     reader::{self, Location},
-    types::{CallContext, List, MalData, MalKey, MalVal},
+    types::{CallContext, List, MalData, MalFn, MalKey, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -18,6 +18,8 @@ pub fn std(data: &mut Env) {
     fmt(data);
     env(data);
     fs(data);
+    string(data);
+    time(data);
     std_mal(data);
 }
 
@@ -56,7 +58,7 @@ mod sform {
         Error, ErrorKind, MalRet,
     };
 
-    use super::{take_exact, to_list_like, to_sym};
+    use super::{take_exact, to_fn, to_list_like, to_sym};
 
     pub fn quote(ctx: &CallContext, _: &mut Env, (args, loc): (List, Location)) -> TcoRet {
         let [value] = take_exact(ctx, &loc, args)?;
@@ -235,17 +237,8 @@ mod sform {
 
     pub fn r#macro(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
-
-        let MalVal::Fn(mut f) = value.value.clone() else {
-            return Err(Error::new(
-                ErrorKind::UnexpectedType(MalVal::FN, value.type_name()),
-                ctx,
-                value.loc.clone(),
-            ));
-        };
-
+        let mut f = to_fn(ctx, &value)?.clone();
         f.is_macro = true;
-
         Ok(MalVal::Fn(f).with_loc(loc))
     }
 }
@@ -405,12 +398,14 @@ mod fmt {
 
 pub fn cmp(data: &mut Env) {
     data.set_fn(loc!(), "=", cmp::eq);
-    data.set_fn(loc!(), "<", cmp::lt);
-    data.set_fn(loc!(), "<=", cmp::lte);
-    data.set_fn(loc!(), ">", cmp::gt);
-    data.set_fn(loc!(), ">=", cmp::gte);
+    data.set_fn(loc!(), "lt", cmp::lt);
+    data.set_fn(loc!(), "lt=", cmp::lte);
+    data.set_fn(loc!(), "gt", cmp::gt);
+    data.set_fn(loc!(), "gt=", cmp::gte);
 
     data.set_fn(loc!(), "not", cmp::not);
+    data.set_special(loc!(), "and", cmp::and);
+    data.set_special(loc!(), "or", cmp::or);
 
     data.set_fn(loc!(), "list?", cmp::is_list);
     data.set_fn(loc!(), "empty?", cmp::is_empty);
@@ -420,6 +415,7 @@ mod cmp {
     use std::{cmp::Ordering, rc::Rc};
 
     use crate::{
+        env::{Env, TcoRet, TcoVal},
         reader::Location,
         types::{CallContext, List, MalData, MalVal},
         Error, ErrorKind, MalRet,
@@ -434,6 +430,30 @@ mod cmp {
     pub fn not(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
         Ok(MalVal::Bool(!value.is_true()).with_loc(loc))
+    }
+
+    pub fn and(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
+        let [a, b] = take_exact(ctx, &loc, args)?;
+        if !env.eval(ctx, a)?.is_true() {
+            return Ok(TcoVal::Val(MalVal::Bool(false).with_loc(loc)));
+        }
+        if !env.eval(ctx, b)?.is_true() {
+            return Ok(TcoVal::Val(MalVal::Bool(false).with_loc(loc)));
+        }
+        Ok(TcoVal::Val(MalVal::Bool(true).with_loc(loc)))
+    }
+
+    pub fn or(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
+        let [a, b] = take_exact(ctx, &loc, args)?;
+        let a = env.eval(ctx, a)?;
+        if a.is_true() {
+            return Ok(TcoVal::Val(a));
+        }
+        let b = env.eval(ctx, b)?;
+        if b.is_true() {
+            return Ok(TcoVal::Val(b));
+        }
+        Ok(TcoVal::Val(MalVal::Bool(true).with_loc(loc)))
     }
 
     pub fn eq2(fst: &MalData, snd: &MalData) -> Result<bool, Error> {
@@ -633,7 +653,7 @@ pub fn ds(data: &mut Env) {
 
     data.set_fn(loc!(), "map/take", ds::map_take);
 
-    data.set_fn(loc!(), "count", ds::count);
+    data.set_fn(loc!(), "len", ds::len);
 }
 
 mod ds {
@@ -676,7 +696,7 @@ mod ds {
         let [value] = take_exact(ctx, &loc, args)?;
         let mut value = to_list_like(ctx, value)?.to_list();
         let Some(value) = value.pop_front() else {
-            return Err(Error::new(ErrorKind::ListSize("fst".into(), 1), ctx, loc));
+            return Ok(list!().with_loc(loc));
         };
         Ok(value)
     }
@@ -685,10 +705,10 @@ mod ds {
         let [value] = take_exact(ctx, &loc, args)?;
         let mut value = to_list_like(ctx, value)?.to_list();
         let Some(_) = value.pop_front() else {
-            return Err(Error::new(ErrorKind::ListSize("snd".into(), 2), ctx, loc));
+            return Ok(list!().with_loc(loc));
         };
         let Some(value) = value.pop_front() else {
-            return Err(Error::new(ErrorKind::ListSize("snd".into(), 2), ctx, loc));
+            return Ok(list!().with_loc(loc));
         };
         Ok(value)
     }
@@ -763,7 +783,7 @@ mod ds {
         Ok(list!(value, MalVal::Map(map).with_loc(map_dat.loc.clone())).with_loc(loc))
     }
 
-    pub fn count(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+    pub fn len(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
 
         Ok(MalVal::Int(match &value.value {
@@ -780,6 +800,62 @@ mod ds {
         } as i64)
         .with_loc(loc))
     }
+}
+
+pub fn time(data: &mut Env) {
+    data.set_fn(loc!(), "time/now", time::now);
+}
+
+mod time {
+    use crate::{
+        ns::take_exact,
+        reader::Location,
+        types::{CallContext, List, MalVal},
+        MalRet,
+    };
+
+    pub fn now(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [] = take_exact(ctx, &loc, args)?;
+        Ok(MalVal::Str(format!("{:?}", std::time::SystemTime::now()).to_string()).with_loc(loc))
+    }
+}
+
+pub fn string(data: &mut Env) {
+    data.set_fn(loc!(), "string/rsplit", string::rsplit_once);
+    data.set_fn(loc!(), "string/split", string::split_once);
+}
+
+mod string {
+    use crate::{
+        list,
+        reader::Location,
+        types::{CallContext, List, MalVal},
+        MalRet,
+    };
+
+    use super::{take_exact, to_str};
+
+    macro_rules! make_split_once {
+        ( $name:ident ) => {
+            pub fn $name(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+                let [value, pat] = take_exact(ctx, &loc, args)?;
+                let value = to_str(ctx, &value)?;
+                let pat = to_str(ctx, &pat)?;
+
+                match value.$name(pat) {
+                    Some((l, r)) => Ok(list!(
+                        MalVal::Str(l.to_string()).with_loc(loc.clone()),
+                        MalVal::Str(r.to_string()).with_loc(loc.clone())
+                    )
+                    .with_loc(loc)),
+                    None => Ok(list!().with_loc(loc)),
+                }
+            }
+        };
+    }
+
+    make_split_once!(rsplit_once);
+    make_split_once!(split_once);
 }
 
 pub fn math(data: &mut Env) {
@@ -894,6 +970,18 @@ fn op_error(
         ctx,
         loc,
     )
+}
+
+fn to_fn<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e MalFn, Error> {
+    let MalVal::Fn(f) = &value.value else {
+        return Err(Error::new(
+            ErrorKind::UnexpectedType(MalVal::FN, value.type_name()),
+            ctx,
+            value.loc.clone(),
+        ));
+    };
+
+    Ok(f)
 }
 
 fn to_hash_map<'e>(

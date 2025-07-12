@@ -72,8 +72,6 @@ pub enum ErrorKind {
     OutsideOfQuasiquote(&'static str),
     #[error("index out of range {0} for list of size {1}")]
     IndexOutOfRange(i64, usize),
-    #[error("cannot use '{0}', list must have at least {1} elements")]
-    ListSize(String, usize),
     #[error("denied access to filesystem, you cannot use the filesystem functions")]
     DeniedFsAccess,
     #[error("invalid path '{}'", _0.display())]

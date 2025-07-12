@@ -1,1 +1,3 @@
 - [ ] Eval map keys instead of just including them raw
+- [ ] Make print accept multiple arguments and return nothing, and another function that prints and returns
+- [ ] Should I add null?

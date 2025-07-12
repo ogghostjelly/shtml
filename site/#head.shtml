@@ -1,5 +1,3 @@
-@(import! time)
-
 @; Importing evaluates the file, which prints "Hello from /my_lib.mal!"
 @(import! "/my_lib.mal" as cool_lib) ; Path is relative to 'config.mal'
 

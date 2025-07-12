@@ -6,18 +6,45 @@
     [name params & body]
     `(def! ~name (macro (fn* ~params ~@body))))))
 
-(def! cond (macro (fn*
+(defmacro! cond
     [& xs]
     (if (not (empty? xs))
         (list 'if (fst xs)
-            (if (> (count xs) 1)
+            (if (gt (len xs) 1)
                 (nth xs 1)
                 (throw "odd number of forms to cond"))
             (cons 'cond (rest (rest xs))))
-        '()))))
+        '()))
 
 (defn! include
     [params]
     (def! params (map/take params 'src))
     (def! e (env/sets (new-env) (snd params)))
     (load-shtml e (fst params)))
+
+(defmacro! import!
+    [path & args]
+
+    (defn! name-from-path
+        [path]
+        (def! path (or (snd (string/rsplit path "/")) ""))
+        (or (fst (string/split path ".")) path))
+
+    ; Get the name of the binding
+    (def! name (cond
+        ; Get the 'as [NAME]' term if it is present
+        (and (= (len args) 2)
+             (= (fst args) 'as))
+            (snd args)
+        
+        ; Get the filename if alias is not specified
+        (= (len args) 0) (name-from-path path)
+
+        ; Else just crash
+        true (error "Bad arguments")))
+    
+    ; Read and evaluate the file in a new environment
+    (def! value (load-mal (new-env) path))
+
+    ; Set name to the evaluated value
+    `(def! ~name ~value))

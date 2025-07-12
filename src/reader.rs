@@ -68,8 +68,8 @@ fn shtml_tag(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let (rest, _) = input.take_while(|ch| ch.is_whitespace());
 
     let sym_loc = rest.loc.clone();
-    let (mut next, sym) = rest.take_while(|ch| is_valid_char(ch) && !"<>\"\'".contains(ch));
-    let sym = MalVal::Sym(sym.data.to_string()).with_loc(sym_loc);
+    let (mut next, sym) = symbol(rest)?;
+    let sym = MalVal::Sym(sym.to_string()).with_loc(sym_loc);
 
     let mut map = IndexMap::new();
 
@@ -318,7 +318,7 @@ fn keyword(input: Span<'_>) -> TResult<'_, &str> {
 }
 
 fn is_valid_char(input: char) -> bool {
-    !input.is_whitespace() && !"()[]{}\"".contains(input)
+    !input.is_whitespace() && !"()[]{}<>\"\'".contains(input)
 }
 
 fn string(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
