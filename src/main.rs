@@ -194,7 +194,7 @@ fn build_shtml_file(env: &Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Resu
                     MalVal::Int(value) => value.to_string(),
                     MalVal::Float(value) => value.to_string(),
                     MalVal::Bool(value) => value.to_string(),
-                    _ => todo!(),
+                    _ => todo!("cannot embed"),
                 }
             }
         };

@@ -51,4 +51,4 @@
 
 (defmacro! #
     [& xs]
-    `(do ~@xs nil))
+    `(do (~@xs) nil))

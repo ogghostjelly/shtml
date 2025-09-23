@@ -357,6 +357,7 @@ mod fs {
 pub fn fmt(data: &mut Env) {
     data.set_fn(loc!(), "prin", fmt::prin);
     data.set_fn(loc!(), "print", fmt::print);
+    data.set_fn(loc!(), "dbg", fmt::dbg);
 }
 
 mod fmt {
@@ -381,15 +382,31 @@ mod fmt {
         }
     }
 
-    pub fn prin(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, &loc, args)?;
-        print!("{}", PrettyPrint(&value.value));
-        Ok(value)
+    pub fn prin(_ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        for value in args.iter() {
+            print!("{}", PrettyPrint(&value.value));
+        }
+        Ok(MalVal::Nil.with_loc(loc))
     }
 
-    pub fn print(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+    pub fn print(_ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        for value in args.iter() {
+            print!("{}", PrettyPrint(&value.value));
+        }
+        println!();
+        Ok(MalVal::Nil.with_loc(loc))
+    }
+
+    pub fn dbg(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
-        println!("{}", PrettyPrint(&value.value));
+
+        println!(
+            "dbg: {} ({}) at {}",
+            value.value,
+            value.type_name(),
+            value.loc
+        );
+
         Ok(value)
     }
 }

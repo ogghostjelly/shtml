@@ -1,3 +1,6 @@
-- [ ] Eval map keys instead of just including them raw
-- [ ] Make print accept multiple arguments and return nothing, and another function that prints and returns
 - [ ] Errors as values would be interesting, they would work just like nil but instead contain extra data about their origin and display that data when it crashes
+- [ ] Reader errors kinda suck
+- [ ] Isolate css and javascript when including shtml, since currently all functions and names get chucked into the global namespace!
+- [ ] x@ custom tags should be defineable by just naming a function x@
+- [ ] HTML IN MAL, I should be able to write @(join <a>Example</a> <p>Text</p>)
+- [ ] A .shtml file should be able to expand to multiple files, maybe by returning a map?
