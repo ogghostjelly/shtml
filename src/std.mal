@@ -17,10 +17,14 @@
         '()))
 
 (defn! include
+    [src params]
+    (def! e (env/sets (new-env) params))
+    (load-shtml e src))
+
+(defn! x@include
     [params]
     (def! params (map/take params 'src))
-    (def! e (env/sets (new-env) (snd params)))
-    (load-shtml e (fst params)))
+    (include (fst params) (snd params)))
 
 (defmacro! import!
     [path & args]

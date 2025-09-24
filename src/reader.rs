@@ -69,7 +69,7 @@ fn shtml_tag(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
 
     let sym_loc = rest.loc.clone();
     let (mut next, sym) = symbol(rest)?;
-    let sym = MalVal::Sym(sym.to_string()).with_loc(sym_loc);
+    let sym = MalVal::Sym(format!("x@{sym}")).with_loc(sym_loc);
 
     let mut map = IndexMap::new();
 
