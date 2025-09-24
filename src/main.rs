@@ -4,10 +4,14 @@ use std::{
     io::{self, Cursor},
     path::{Path, PathBuf},
     rc::Rc,
+    sync::mpsc,
+    time::Duration,
 };
 
 use clap::Parser as _;
 use colored::Colorize as _;
+use notify_debouncer_full::new_debouncer;
+use notify_debouncer_full::notify;
 use rustyline::{error::ReadlineError, Editor};
 use shtml::{
     cli::{Cli, Commands, ProjectPath},
@@ -19,7 +23,7 @@ use shtml::{
 fn main() {
     let res = match Cli::parse()
         .commands
-        .unwrap_or(Commands::Build(ProjectPath::default()))
+        .unwrap_or(Commands::Watch(ProjectPath::default()))
     {
         Commands::Repl => repl(),
         Commands::Build(path) => build(path),
@@ -80,12 +84,56 @@ fn convert_error<T, E: std::error::Error + 'static>(
     Ok(res?)
 }
 
-fn watch(path: ProjectPath) -> Result<(), Error> {
-    let path = path.or_pwd().map_err(Error::GetPwd)?;
+fn watch(project_path: ProjectPath) -> Result<(), Error> {
+    let path = project_path
+        .clone()
+        .or_pwd()
+        .map_err(Error::GetPwd)?
+        .canonicalize()
+        .map_err(Error::GetPwd)?;
+    let dist = path.join("_site");
 
-    _ = path;
+    let (tx, rx) = mpsc::channel();
+    let mut debouncer = new_debouncer(Duration::from_millis(200), None, tx)?;
+    debouncer.watch(path, notify::RecursiveMode::Recursive)?;
 
-    todo!()
+    for res in rx {
+        match res {
+            Ok(e) => {
+                let changed = e.into_iter().find(|e| match e.kind {
+                    notify::EventKind::Create(_)
+                    | notify::EventKind::Modify(_)
+                    | notify::EventKind::Remove(_) => !e.paths.iter().all(|p| p.starts_with(&dist)),
+                    notify::EventKind::Access(_)
+                    | notify::EventKind::Any
+                    | notify::EventKind::Other => false,
+                });
+
+                if let Some(_) = changed {
+                    println!(
+                        "[{:05}] Rebuilding",
+                        std::time::UNIX_EPOCH
+                            .elapsed()
+                            .expect("clock should not be before UNIX EPOCH")
+                            .as_millis()
+                            % 100000, // get the last few digits
+                    );
+
+                    match build(project_path.clone()) {
+                        Ok(()) => {}
+                        Err(e) => eprintln!("{} {e}", "err:".red()),
+                    }
+                }
+            }
+            Err(errs) => {
+                for e in errs {
+                    eprintln!("{} {e}", "err:".red());
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn build(path: ProjectPath) -> Result<(), Box<dyn std::error::Error>> {
@@ -262,4 +310,6 @@ pub enum Error {
     MalformedPath(PathBuf),
     #[error("couldn't copy '{0}' to '_site': {1}")]
     CopySiteFile(String, io::Error),
+    #[error("shtml watch: notify: {0}")]
+    Notify(#[from] notify::Error),
 }
