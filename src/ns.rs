@@ -679,7 +679,7 @@ mod ds {
         Error, ErrorKind, MalRet,
     };
 
-    use super::{take_exact, to_hash_map, to_key, to_list_like, to_str};
+    use super::{take_exact, to_hash_map, to_key, to_list_like};
 
     pub fn nth(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value, index] = take_exact(ctx, &loc, args)?;
@@ -782,7 +782,16 @@ mod ds {
 
     pub fn sym(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
-        let str = to_str(ctx, &value)?;
+        let str = match &value.value {
+            MalVal::Sym(value) | MalVal::Str(value) | MalVal::Kwd(value) => value,
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::UnexpectedType(MalVal::STR, value.type_name()),
+                    ctx,
+                    value.loc.clone(),
+                ))
+            }
+        };
         Ok(MalVal::Sym(str.to_string()).with_loc(loc))
     }
 
