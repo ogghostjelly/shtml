@@ -230,11 +230,13 @@ fn build_shtml_file(env: &Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Resu
 
     let ctx = CallContext::with_fs(env.clone(), from, path);
 
+    let mut env = env.clone();
+
     for el in els {
         let text = match el {
             Element::Text(text) => text,
             Element::Value(ast) => {
-                let data = env.clone().eval(&ctx, ast).map_err(Error::Shtml)?;
+                let data = env.eval(&ctx, ast).map_err(Error::Shtml)?;
 
                 match &data.value {
                     MalVal::Nil => "".to_string(),
