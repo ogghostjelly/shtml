@@ -654,6 +654,7 @@ pub fn ds(data: &mut Env) {
     data.set_fn(loc!(), "hash-map", ds::hash_map);
     data.set_fn(loc!(), "list", ds::list);
     data.set_fn(loc!(), "vec", ds::vec);
+    data.set_fn(loc!(), "sym", ds::sym);
 
     data.set_fn(loc!(), "cons", ds::cons);
     data.set_fn(loc!(), "concat", ds::concat);
@@ -678,7 +679,7 @@ mod ds {
         Error, ErrorKind, MalRet,
     };
 
-    use super::{take_exact, to_hash_map, to_key, to_list_like};
+    use super::{take_exact, to_hash_map, to_key, to_list_like, to_str};
 
     pub fn nth(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value, index] = take_exact(ctx, &loc, args)?;
@@ -777,6 +778,12 @@ mod ds {
 
     pub fn vec(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
         Ok(MalVal::Vector(args.into_vec()).with_loc(loc))
+    }
+
+    pub fn sym(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [value] = take_exact(ctx, &loc, args)?;
+        let str = to_str(ctx, &value)?;
+        Ok(MalVal::Sym(str.to_string()).with_loc(loc))
     }
 
     pub fn map_take(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {

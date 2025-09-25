@@ -1,6 +1,9 @@
 use std::fmt;
 
-use crate::types::{MalFn, MalVal};
+use crate::{
+    reader,
+    types::{MalFn, MalVal},
+};
 
 impl fmt::Display for MalVal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -30,10 +33,16 @@ fn display(value: &MalVal, f: &mut fmt::Formatter<'_>, mut quote: bool) -> fmt::
             quote,
         ),
         MalVal::Sym(value) => {
-            if !quote {
-                write!(f, "'")?;
-            };
-            write!(f, "{value}")
+            if value.chars().all(reader::is_valid_char) {
+                if !quote {
+                    write!(f, "'")?;
+                };
+                write!(f, "{value}")
+            } else {
+                write!(f, "(sym ")?;
+                write!(f, "\"{}\"", escape(value))?;
+                write!(f, ")")
+            }
         }
         MalVal::Str(value) => write!(f, "\"{}\"", escape(value)),
         MalVal::Kwd(value) => write!(f, ":{value}"),

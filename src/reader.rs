@@ -326,7 +326,7 @@ fn keyword(input: Span<'_>) -> TResult<'_, &str> {
     Ok((rest, keyword.data))
 }
 
-fn is_valid_char(input: char) -> bool {
+pub fn is_valid_char(input: char) -> bool {
     !input.is_whitespace() && !"()[]{}<>\"\',".contains(input)
 }
 

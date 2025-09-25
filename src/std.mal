@@ -31,8 +31,8 @@
 
     (defn! name-from-path
         [path]
-        (def! path (or (snd (string/rsplit path "/")) ""))
-        (or (fst (string/split path ".")) path))
+        (def! path (snd (or (string/rsplit path "/") [nil path])))
+        (fst (or (string/split path ".") [path nil])))
 
     ; Get the name of the binding
     (def! name (cond
@@ -51,7 +51,7 @@
     (def! value (load-mal (new-env) path))
 
     ; Set name to the evaluated value
-    `(def! ~name ~value))
+    `(def! ~(sym name) ~value))
 
 (defmacro! #
     [& xs]
