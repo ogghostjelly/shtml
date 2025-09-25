@@ -153,7 +153,7 @@ mod sform {
             env.set(key, value);
         }
 
-        Ok(TcoVal::Unevaluated(body))
+        Ok(TcoVal::Val(env.eval(ctx, body)?))
     }
 
     pub fn def(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
