@@ -364,12 +364,11 @@ mod fmt {
     use std::fmt;
 
     use crate::{
+        ns::take_atleast,
         reader::Location,
         types::{CallContext, List, MalVal},
         MalRet,
     };
-
-    use super::take_exact;
 
     struct PrettyPrint<'a>(&'a MalVal);
 
@@ -398,14 +397,13 @@ mod fmt {
     }
 
     pub fn dbg(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        let [value] = take_exact(ctx, &loc, args)?;
+        let ([value], rest) = take_atleast(ctx, &loc, args)?;
 
-        println!(
-            "dbg: {} ({}) at {}",
-            value.value,
-            value.type_name(),
-            value.loc
-        );
+        print!("dbg:");
+        for value in rest {
+            print!(" {}", PrettyPrint(&value.value));
+        }
+        println!(": {} at {}", value.value, loc);
 
         Ok(value)
     }
