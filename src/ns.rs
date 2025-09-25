@@ -97,7 +97,7 @@ mod sform {
 
             match try_take1_sym(value.clone(), "splice-unquote") {
                 Ok(args) => {
-                    let ctx = ctx.new_frame(("unquote".into(), data.loc.clone()));
+                    let ctx = ctx.new_frame(("splice-unquote".into(), data.loc.clone()));
                     let [value] = take_exact(&ctx, &data.loc, args)?;
                     let value = env.eval(&ctx, value)?;
                     for el in to_list_like(&ctx, value)?.into_iter().rev() {
