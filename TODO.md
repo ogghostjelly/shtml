@@ -3,3 +3,4 @@
 - [ ] HTML IN MAL, I should be able to write @(join <a>Example</a> <p>Text</p>)
 - [ ] A .shtml file should be able to expand to multiple files, maybe by returning a map?
 - [ ] Errors point to where the culprit value is defined but not where the error occured!
+- [ ] Cyclic references in (include) causes a stack-overflow

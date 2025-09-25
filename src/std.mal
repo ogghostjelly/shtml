@@ -17,7 +17,11 @@
         nil))
 
 (defn! include
-    [src params]
+    [src & rest]
+    (def! params (or (fst rest) {}))
+    (if (snd rest)
+        (throw "too many arguments")
+        ())
     (def! e (env/sets (new-env) params))
     (load-shtml e src))
 
@@ -45,7 +49,7 @@
         (= (len args) 0) (name-from-path path)
 
         ; Else just crash
-        true (throw "Bad arguments")))
+        true (throw "bad arguments")))
     
     ; Read and evaluate the file in a new environment
     (def! value (load-mal (new-env) path))
