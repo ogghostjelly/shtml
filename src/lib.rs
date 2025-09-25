@@ -60,7 +60,7 @@ pub enum ErrorKind {
     UnevenArguments(&'static str),
     #[error("'{0}' cannot be a map key")]
     InvalidMapKey(&'static str),
-    #[error("key in map '{0}' not found")]
+    #[error("key in map {0} not found")]
     MapKeyNotFound(MalVal),
     #[error("expected {0} arguments but got {1}")]
     ArityMismatch(usize, usize),

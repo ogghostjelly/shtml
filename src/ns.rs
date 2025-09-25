@@ -669,6 +669,23 @@ pub fn ds(data: &mut Env) {
     data.set_fn(loc!(), "len", ds::len);
 }
 
+pub fn apply_map(
+    map: &IndexMap<MalKey, Rc<MalData>>,
+    ctx: &CallContext,
+    (args, loc): (List, Location),
+) -> MalRet {
+    let [value] = take_exact(ctx, &loc, args)?;
+    let key = to_key(ctx, value)?;
+    match map.get(&key) {
+        Some(value) => Ok(Rc::clone(value)),
+        None => Err(Error::new(
+            ErrorKind::MapKeyNotFound(key.into_value()),
+            ctx,
+            loc,
+        )),
+    }
+}
+
 mod ds {
     use indexmap::IndexMap;
 

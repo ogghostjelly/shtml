@@ -3,7 +3,7 @@ use std::{collections::HashMap, rc::Rc};
 use indexmap::IndexMap;
 
 use crate::{
-    ns,
+    ns::{self, apply_map},
     reader::Location,
     types::{CallContext, List, MalData, MalFn, MalVal},
     Error, ErrorKind, MalRet,
@@ -263,12 +263,20 @@ impl Env {
                     TcoVal::Val(env.eval(ctx, last)?)
                 })
             }
+            MalVal::Map(map) => apply_map(
+                map,
+                &ctx.new_frame(("map/get".to_string(), loc.clone())),
+                (
+                    List::from_rev(self.eval_in(ctx, &vals.clone().into_rev())?),
+                    loc.clone(),
+                ),
+            )
+            .map(TcoVal::Val),
             MalVal::Special(_, f) => f(ctx, self, (vals.clone(), loc.clone())),
             MalVal::List(_)
             | MalVal::Nil
             | MalVal::Env(_)
             | MalVal::Vector(_)
-            | MalVal::Map(_)
             | MalVal::Sym(_)
             | MalVal::Str(_)
             | MalVal::Kwd(_)
