@@ -97,6 +97,11 @@ fn watch(project_path: ProjectPath) -> Result<(), Error> {
     let mut debouncer = new_debouncer(Duration::from_millis(200), None, tx)?;
     debouncer.watch(path, notify::RecursiveMode::Recursive)?;
 
+    match build(project_path.clone()) {
+        Ok(()) => {}
+        Err(e) => eprintln!("{} {e}", "err:".red()),
+    }
+
     for res in rx {
         match res {
             Ok(e) => {
@@ -236,6 +241,7 @@ fn build_shtml_file(env: &Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Resu
         let text = match el {
             Element::Text(text) => text,
             Element::Value(ast) => {
+                let loc = ast.loc.clone();
                 let data = env.eval(&ctx, ast).map_err(Error::Shtml)?;
 
                 match &data.value {
@@ -244,7 +250,12 @@ fn build_shtml_file(env: &Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Resu
                     MalVal::Int(value) => value.to_string(),
                     MalVal::Float(value) => value.to_string(),
                     MalVal::Bool(value) => value.to_string(),
-                    _ => todo!("cannot embed"),
+                    _ => todo!(
+                        "cannot embed ({}) {} at {}",
+                        data.value.type_name(),
+                        data.value,
+                        loc
+                    ),
                 }
             }
         };
