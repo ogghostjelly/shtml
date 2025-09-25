@@ -14,7 +14,7 @@
                 (nth xs 1)
                 (throw "odd number of forms to cond"))
             (cons 'cond (rest (rest xs))))
-        '()))
+        nil))
 
 (defn! include
     [src params]
