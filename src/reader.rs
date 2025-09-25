@@ -47,8 +47,11 @@ fn shtml(input: Span<'_>) -> Result<Vec<Element>, Error<'_>> {
             return Ok(elems);
         }
 
-        let (rest, is_value) =
-            Or(Map(Tag("@"), |_| true), Map(Tag("<x@"), |_| false)).parse(rest)?;
+        let (rest, is_value) = Or(
+            Map(open_tag("@"), |_| true),
+            Map(open_tag("<x@"), |_| false),
+        )
+        .parse(rest)?;
 
         let (rest, value) = if is_value {
             value(rest)
@@ -76,7 +79,7 @@ fn shtml_tag(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     loop {
         let (rest, _) = next.take_while(|ch| ch.is_whitespace());
 
-        let close = Map(Or(Tag(">"), Tag("/>")), |_| None);
+        let close = Map(Or(tag(">"), tag("/>")), |_| None);
         let (rest, pair) = Or(close, Map(shtml_tag_prop, Some)).parse(rest)?;
 
         next = rest;
@@ -96,7 +99,7 @@ fn shtml_tag_prop(input: Span<'_>) -> TResult<'_, (MalKey, Rc<MalData>)> {
     let key = MalKey::Sym(key.data.to_string());
 
     let (rest, _) = rest.take_while(|ch| ch.is_whitespace());
-    let (rest, _) = Tag("=").parse(rest)?;
+    let (rest, _) = tag("=").parse(rest)?;
     let (rest, _) = rest.take_while(|ch| ch.is_whitespace());
 
     let (rest, value) = value(rest)?;
@@ -206,7 +209,7 @@ impl<'i> Parser<'i> for Shorthand {
 
     fn parse(self, input: Span<'i>) -> TResult<'i, Self::Output> {
         let loc = input.loc.clone();
-        let (rest, tag) = Tag(self.0).parse(input)?;
+        let (rest, tag) = open_tag(self.0).parse(input)?;
         let (rest, value) = next_value(rest)?;
         Ok((
             rest,
@@ -228,7 +231,7 @@ fn next_value(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
 
 fn hash_map(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
-    let (rest, _) = Tag("{").parse(input)?;
+    let (rest, _) = open_tag("{").parse(input)?;
 
     let (mut rest, _) = rest.take_while(|ch| ch.is_whitespace());
     let mut map = IndexMap::new();
@@ -244,17 +247,17 @@ fn hash_map(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     }
 
     if let Some((inp, _)) = key {
-        return Err(inp.err(ErrorKind::MapUnevenArgs));
+        return Err(inp.err(ErrorKind::MapUnevenArgs, true));
     }
 
-    let (rest, _) = Tag("}").parse(rest)?;
+    let (rest, _) = tag("}").parse(rest)?;
     Ok((rest, MalVal::Map(map).with_loc(loc)))
 }
 
 fn to_key(input: Span<'_>, data: Rc<MalData>) -> TResult<'_, MalKey> {
     match MalKey::from_value(data.value.clone()) {
         Ok(key) => Ok((input, key)),
-        Err(value) => Err(input.err(ErrorKind::MapBadKey(value.type_name()))),
+        Err(value) => Err(input.err(ErrorKind::MapBadKey(value.type_name()), true)),
     }
 }
 
@@ -277,9 +280,9 @@ impl<'i> Parser<'i> for ListLike {
     type Output = Vec<Rc<MalData>>;
 
     fn parse(self, input: Span<'i>) -> TResult<'i, Self::Output> {
-        let (rest, _) = Tag(self.0).parse(input)?;
+        let (rest, _) = open_tag(self.0).parse(input)?;
         let (rest, value) = elems(rest)?;
-        let (rest, _) = Tag(self.1).parse(rest)?;
+        let (rest, _) = tag(self.1).parse(rest)?;
         Ok((rest, value))
     }
 }
@@ -305,20 +308,20 @@ fn ident(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
 
 fn symbol(input: Span<'_>) -> TResult<'_, &str> {
     let Some((rest, symbol)) = input.take_while1(is_valid_char) else {
-        return Err(input.err(ErrorKind::Symbol));
+        return Err(input.err(ErrorKind::Symbol, false));
     };
     Ok((rest, symbol.data))
 }
 
 fn nil(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
-    Map(Tag("nil"), |_| MalVal::Nil.with_loc(loc)).parse(input)
+    Map(open_tag("nil"), |_| MalVal::Nil.with_loc(loc)).parse(input)
 }
 
 fn keyword(input: Span<'_>) -> TResult<'_, &str> {
-    let (rest, _) = Tag(":").parse(input.clone())?;
+    let (rest, _) = open_tag(":").parse(input.clone())?;
     let Some((rest, keyword)) = rest.take_while1(is_valid_char) else {
-        return Err(input.err(ErrorKind::Keyword));
+        return Err(input.err(ErrorKind::Keyword, true));
     };
     Ok((rest, keyword.data))
 }
@@ -329,7 +332,7 @@ fn is_valid_char(input: char) -> bool {
 
 fn string(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
-    let (rest, _) = Tag("\"").parse(input)?;
+    let (rest, _) = open_tag("\"").parse(input)?;
 
     let mut is_escaped = false;
 
@@ -344,7 +347,7 @@ fn string(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
         true
     });
 
-    let (rest, _) = Tag("\"").parse(rest)?;
+    let (rest, _) = tag("\"").parse(rest)?;
 
     Ok((rest, MalVal::Str(unescape_str(string.data)).with_loc(loc)))
 }
@@ -356,14 +359,17 @@ fn unescape_str(s: &str) -> String {
 }
 
 fn comment(input: Span<'_>) -> TResult<'_, &str> {
-    let (rest, _) = Tag(";").parse(input)?;
+    let (rest, _) = open_tag(";").parse(input)?;
     let (rest, comment) = rest.take_while(|ch| ch != '\n');
     Ok((rest, comment.data))
 }
 
 fn bool(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
     let loc = input.loc.clone();
-    let boo = Or(Map(Tag("true"), |_| true), Map(Tag("false"), |_| false));
+    let boo = Or(
+        Map(open_tag("true"), |_| true),
+        Map(open_tag("false"), |_| false),
+    );
     let val = Map(boo, |v| MalVal::Bool(v).with_loc(loc));
     val.parse(input)
 }
@@ -377,7 +383,7 @@ fn num(input: Span<'_>) -> TResult<'_, Rc<MalData>> {
 
 fn float(input: Span<'_>) -> TResult<'_, f64> {
     let (rest, int) = take_int(input.clone())?;
-    let (rest, dot) = Tag(".").parse(rest)?;
+    let (rest, dot) = open_tag(".").parse(rest)?;
     let digs = match digits(rest) {
         Ok((_, digs)) => digs.data.len(),
         Err(_) => 0,
@@ -388,7 +394,7 @@ fn float(input: Span<'_>) -> TResult<'_, f64> {
 
     match float.data.replace('_', "").parse() {
         Ok(float) => Ok((rest, float)),
-        Err(e) => Err(int.err(ErrorKind::Float(e))),
+        Err(e) => Err(int.err(ErrorKind::Float(e), true)),
     }
 }
 
@@ -397,12 +403,12 @@ fn int(input: Span<'_>) -> TResult<'_, i64> {
 
     match int.data.replace('_', "").parse() {
         Ok(int) => Ok((rest, int)),
-        Err(e) => Err(int.err(ErrorKind::Int(e))),
+        Err(e) => Err(int.err(ErrorKind::Int(e), true)),
     }
 }
 
 fn take_int(input: Span<'_>) -> SResult<'_> {
-    let (rest, slen) = match Or(Tag("+"), Tag("-")).parse(input.clone()) {
+    let (rest, slen) = match Or(tag("+"), tag("-")).parse(input.clone()) {
         Ok((rest, sign)) => (rest, sign.data.len()),
         Err(_) => (input.clone(), 0),
     };
@@ -416,11 +422,11 @@ fn take_int(input: Span<'_>) -> SResult<'_> {
 
 fn digits(input: Span<'_>) -> SResult<'_> {
     let Some((rest, ch)) = input.take_one() else {
-        return Err(input.err(ErrorKind::Digit));
+        return Err(input.err(ErrorKind::Digit, false));
     };
 
     if !ch.is_ascii_digit() {
-        return Err(input.err(ErrorKind::Digit));
+        return Err(input.err(ErrorKind::Digit, false));
     }
 
     Ok(rest.take_while(|ch| ch.is_ascii_digit() || ch == '_'))
@@ -441,20 +447,28 @@ where
     }
 }
 
-struct Tag(&'static str);
+fn open_tag(s: &'static str) -> Tag {
+    Tag(s, false)
+}
+
+fn tag(s: &'static str) -> Tag {
+    Tag(s, true)
+}
+
+struct Tag(&'static str, bool);
 
 impl<'i> Parser<'i> for Tag {
     type Output = Span<'i>;
 
     fn parse(self, input: Span<'i>) -> SResult<'i> {
         let Some((rest, first)) = input.split_offset(self.0.len()) else {
-            return Err(input.err(ErrorKind::Tag(self.0)));
+            return Err(input.err(ErrorKind::Tag(self.0), self.1));
         };
 
         if first.data == self.0 {
             Ok((rest, first))
         } else {
-            Err(input.err(ErrorKind::Tag(self.0)))
+            Err(input.err(ErrorKind::Tag(self.0), self.1))
         }
     }
 }
@@ -568,9 +582,13 @@ impl<'i> Span<'i> {
         self.split_offset_unchecked(self.data.len())
     }
 
-    fn err(self, kind: ErrorKind) -> Error<'i> {
+    fn err(self, kind: ErrorKind, is_serious: bool) -> Error<'i> {
         Error {
-            inner: ErrorInner { data: self, kind },
+            inner: ErrorInner {
+                data: self,
+                kind,
+                is_serious,
+            },
         }
     }
 }
@@ -602,10 +620,12 @@ pub struct Error<'i> {
 
 impl Error<'_> {
     pub fn or(self, o: Self) -> Self {
-        if self.inner.kind.priority() >= o.inner.kind.priority() {
+        if self.inner.is_serious {
             self
-        } else {
+        } else if o.inner.is_serious {
             o
+        } else {
+            self
         }
     }
 }
@@ -615,6 +635,7 @@ impl Error<'_> {
 struct ErrorInner<'i> {
     data: Span<'i>,
     kind: ErrorKind,
+    is_serious: bool,
 }
 
 #[derive(Debug, Display)]
@@ -633,21 +654,6 @@ enum ErrorKind {
     MapBadKey(&'static str),
     #[display("hash-map expects an even number of arguments")]
     MapUnevenArgs,
-}
-
-impl ErrorKind {
-    fn priority(&self) -> usize {
-        match self {
-            ErrorKind::Tag(_) => 0,
-            ErrorKind::Digit => 1,
-            ErrorKind::Keyword => 1,
-            ErrorKind::Symbol => 1,
-            ErrorKind::Int(_) => 1,
-            ErrorKind::Float(_) => 1,
-            ErrorKind::MapBadKey(_) => 1,
-            ErrorKind::MapUnevenArgs => 1,
-        }
-    }
 }
 
 #[cfg(test)]
