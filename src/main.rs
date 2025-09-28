@@ -115,7 +115,7 @@ fn watch(project_path: ProjectPath) -> Result<(), Error> {
                     | notify::EventKind::Other => false,
                 });
 
-                if let Some(_) = changed {
+                if changed.is_some() {
                     println!(
                         "[{:05}] Rebuilding",
                         std::time::UNIX_EPOCH

@@ -88,7 +88,6 @@ where
         self.buf_ptr = 0;
     }
 
-    #[must_use]
     pub fn take(&mut self, s: &str) -> Result<bool> {
         for (i, ch) in s.char_indices() {
             if Char::Char(ch) != self.pop()? {
@@ -138,7 +137,7 @@ where
             let value = self.peek()?;
             match f(value.clone())? {
                 Action::Next => match value {
-                    Char::Char(ch) => _ = self.next(ch),
+                    Char::Char(ch) => self.next(ch),
                     Char::Eof => break,
                 },
                 Action::ExHalt => break,

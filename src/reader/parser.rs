@@ -4,12 +4,12 @@ use indexmap::IndexMap;
 
 use crate::{
     list,
-    reader::reader::Char,
+    reader::internal::Char,
     types::{Html, List, MalData, MalKey, MalVal},
 };
 
 use super::{
-    reader::{Action, Reader},
+    internal::{Action, Reader},
     Location,
 };
 
@@ -172,11 +172,24 @@ where
         }
 
         fn is_void_tag(tag: &str) -> bool {
-            match tag {
-                "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "keygen"
-                | "link" | "meta" | "param" | "source" | "track" | "wbr" => true,
-                _ => false,
-            }
+            matches!(
+                tag,
+                "area"
+                    | "base"
+                    | "br"
+                    | "col"
+                    | "embed"
+                    | "hr"
+                    | "img"
+                    | "input"
+                    | "keygen"
+                    | "link"
+                    | "meta"
+                    | "param"
+                    | "source"
+                    | "track"
+                    | "wbr"
+            )
         }
 
         fn to_html_tag(
@@ -253,13 +266,10 @@ where
         }
     }
 
-    #[must_use]
     fn parse_html_tag_end(&mut self, close: bool, void: bool) -> Result<Option<bool>> {
-        if !close && !void {
-            if self.take("/>")? {
-                return Ok(Some(true));
-            };
-        }
+        if !close && !void && self.take("/>")? {
+            return Ok(Some(true));
+        };
         if self.take(">")? {
             return Ok(Some(void));
         };
@@ -270,14 +280,20 @@ where
     fn parse_list(&mut self) -> Result<Option<List>> {
         let mut ls = Vec::new();
         Ok(self
-            .parse_list_like(('(', ')'), |value| Ok(ls.push(value)))?
+            .parse_list_like(('(', ')'), |value| {
+                let _: () = ls.push(value);
+                Ok(())
+            })?
             .map(|()| List::from_vec(ls)))
     }
 
     fn parse_vector(&mut self) -> Result<Option<Vec<Rc<MalData>>>> {
         let mut vec = Vec::new();
         Ok(self
-            .parse_list_like(('[', ']'), |value| Ok(vec.push(value)))?
+            .parse_list_like(('[', ']'), |value| {
+                let _: () = vec.push(value);
+                Ok(())
+            })?
             .map(|()| vec))
     }
 
@@ -287,14 +303,17 @@ where
 
         let Some(()) = self.parse_list_like(('{', '}'), |value| {
             let Some(key) = key.take() else {
-                return Ok(key = Some(match MalKey::from_value(value.value.clone()) {
-                    Ok(key) => key,
-                    Err(e) => return Err(Error::InvalidMapKey(e)),
-                }));
+                return {
+                    let _: () = key = Some(match MalKey::from_value(&value.value) {
+                        Some(key) => key,
+                        None => return Err(Error::InvalidMapKey(value.type_name())),
+                    });
+                    Ok(())
+                };
             };
 
             match map.insert(key.clone(), value) {
-                Some(value) => Err(Error::DuplicateMapKey(key, value.value.clone())),
+                Some(value) => Err(Error::DuplicateMapKey(key, Box::new(value.value.clone()))),
                 None => Ok(()),
             }
         })?
@@ -308,7 +327,6 @@ where
         }
     }
 
-    #[must_use]
     fn parse_list_like(
         &mut self,
         (open, close): (char, char),
@@ -385,9 +403,8 @@ where
                 },
             }
 
-            match symbol.parse() {
-                Ok(x) => return Ok(MalVal::Float(x).with_loc(self.loc())),
-                Err(_) => {}
+            if let Ok(x) = symbol.parse() {
+                return Ok(MalVal::Float(x).with_loc(self.loc()));
             }
 
             return Err(Error::ParseNumber);
@@ -469,10 +486,10 @@ pub enum Error {
     Expected(char),
     #[error("invalid escape sequence")]
     InvalidEscapeSequence,
-    #[error("'{}' cannot be a map key", _0.type_name())]
-    InvalidMapKey(MalVal),
+    #[error("'{0}' cannot be a map key")]
+    InvalidMapKey(&'static str),
     #[error("duplicate map key")]
-    DuplicateMapKey(MalKey, MalVal),
+    DuplicateMapKey(MalKey, Box<MalVal>),
     #[error("map key without value")]
     KeyWithoutValue(MalKey),
     #[error("invalid char")]

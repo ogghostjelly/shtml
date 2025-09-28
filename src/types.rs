@@ -149,7 +149,7 @@ impl List {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> iter::Rev<slice::Iter<Rc<MalData>>> {
+    pub fn iter(&self) -> iter::Rev<slice::Iter<'_, Rc<MalData>>> {
         self.0.iter().rev()
     }
 
@@ -262,15 +262,15 @@ pub enum MalKey {
 }
 
 impl MalKey {
-    pub fn from_value(value: MalVal) -> Result<MalKey, MalVal> {
-        match value {
-            MalVal::Sym(value) => Ok(MalKey::Sym(value)),
-            MalVal::Str(value) => Ok(MalKey::Str(value)),
-            MalVal::Kwd(value) => Ok(MalKey::Kwd(value)),
-            MalVal::Int(value) => Ok(MalKey::Int(value)),
-            MalVal::Bool(value) => Ok(MalKey::Bool(value)),
-            _ => Err(value),
-        }
+    pub fn from_value(value: &MalVal) -> Option<MalKey> {
+        Some(match value {
+            MalVal::Sym(value) => MalKey::Sym(value.clone()),
+            MalVal::Str(value) => MalKey::Str(value.clone()),
+            MalVal::Kwd(value) => MalKey::Kwd(value.clone()),
+            MalVal::Int(value) => MalKey::Int(*value),
+            MalVal::Bool(value) => MalKey::Bool(*value),
+            _ => return None,
+        })
     }
 
     pub fn into_value(self) -> MalVal {

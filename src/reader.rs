@@ -4,12 +4,12 @@ use derive_more::Display;
 
 use crate::types::MalData;
 
+mod internal;
 mod parser;
-mod reader;
 pub use parser::is_valid_char;
 
 pub fn parse_str(loc: Location, s: &str) -> Result<Vec<Rc<MalData>>> {
-    let r = reader::Reader::from_chars(s.chars(), loc);
+    let r = internal::Reader::from_chars(s.chars(), loc);
     try_reader(r, |r| r.parse_file())
 }
 
@@ -17,13 +17,13 @@ pub fn parse_reader<R>(loc: Location, reader: R) -> Result<Vec<Rc<MalData>>>
 where
     R: io::Read,
 {
-    let r = reader::Reader::from_unicode_reader(reader, loc);
+    let r = internal::Reader::from_unicode_reader(reader, loc);
     try_reader(r, |r| r.parse_file())
 }
 
 fn try_reader<I, T>(
-    mut reader: reader::Reader<I>,
-    f: impl FnOnce(&mut reader::Reader<I>) -> parser::Result<T>,
+    mut reader: internal::Reader<I>,
+    f: impl FnOnce(&mut internal::Reader<I>) -> parser::Result<T>,
 ) -> Result<T>
 where
     I: Iterator<Item = parser::Result<char>>,

@@ -679,7 +679,7 @@ pub fn apply_map(
     match map.get(&key) {
         Some(value) => Ok(Rc::clone(value)),
         None => Err(Error::new(
-            ErrorKind::MapKeyNotFound(key.into_value()),
+            ErrorKind::MapKeyNotFound(Box::new(key.into_value())),
             ctx,
             loc,
         )),
@@ -819,7 +819,7 @@ mod ds {
 
         let Some(value) = map.shift_remove(&key) else {
             return Err(Error::new(
-                ErrorKind::MapKeyNotFound(key.into_value()),
+                ErrorKind::MapKeyNotFound(Box::new(key.into_value())),
                 ctx,
                 loc,
             ));
@@ -1039,10 +1039,10 @@ fn to_env<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e Env, Erro
 }
 
 fn to_key(ctx: &CallContext, value: Rc<MalData>) -> Result<MalKey, Error> {
-    match MalKey::from_value(value.value.clone()) {
-        Ok(key) => Ok(key),
-        Err(key) => Err(Error::new(
-            ErrorKind::InvalidMapKey(key.type_name()),
+    match MalKey::from_value(&value.value) {
+        Some(key) => Ok(key),
+        None => Err(Error::new(
+            ErrorKind::InvalidMapKey(value.type_name()),
             ctx,
             value.loc.clone(),
         )),
