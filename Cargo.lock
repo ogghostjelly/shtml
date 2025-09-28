@@ -478,6 +478,7 @@ dependencies = [
  "notify-debouncer-full",
  "rustyline",
  "thiserror",
+ "unicode_reader",
 ]
 
 [[package]]
@@ -546,6 +547,16 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "unicode_reader"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68d43b506d20b459657e0f0fe3bf0fdbac65b61cbcc2bff842fc6614a8dc179"
+dependencies = [
+ "smallvec",
+ "unicode-segmentation",
+]
 
 [[package]]
 name = "utf8parse"

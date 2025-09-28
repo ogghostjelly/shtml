@@ -148,6 +148,7 @@ impl Env {
                 | MalVal::Kwd(_)
                 | MalVal::Int(_)
                 | MalVal::Float(_)
+                | MalVal::Html(_)
                 | MalVal::Bool(_) => return Ok(ast),
             }
         }
@@ -281,6 +282,7 @@ impl Env {
             | MalVal::Str(_)
             | MalVal::Kwd(_)
             | MalVal::Int(_)
+            | MalVal::Html(_)
             | MalVal::Float(_)
             | MalVal::Bool(_) => Err(Error::new(
                 ErrorKind::CannotApply(op.type_name()),

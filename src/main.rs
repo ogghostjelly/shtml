@@ -16,7 +16,8 @@ use rustyline::{error::ReadlineError, Editor};
 use shtml::{
     cli::{Cli, Commands, ProjectPath},
     env::Env,
-    reader::{self, Element, Location},
+    load,
+    reader::{self, Location},
     types::{CallContext, List, MalData, MalVal},
 };
 
@@ -52,7 +53,7 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
             Ok(input) => {
                 let _ = rl.add_history_entry(&input);
 
-                match reader::parse(loc.clone(), &input) {
+                match reader::parse_str(loc.clone(), &input) {
                     Ok(vals) => {
                         for value in vals {
                             match env.eval(&src, value) {
@@ -224,45 +225,15 @@ fn rec_dir(
 }
 
 fn build_shtml_file(env: &Env, from: Rc<PathBuf>, to: &Path, path: &str) -> Result<(), Error> {
-    let input = read_file(&from, path)?;
-
-    let loc = Location::file(path);
-    let els = reader::parse_file(loc, &input)
-        .map_err(|e| Error::ParseFile(path.to_string(), e.to_string()))?;
-
     let mut out = fs::File::create_new(to.join(path).with_extension("html"))
         .map_err(|e| Error::CreateFile(path.to_string(), e))?;
 
-    let ctx = CallContext::with_fs(env.clone(), from, path);
-
+    let ctx = CallContext::with_fs(env.clone(), from.clone(), path);
     let mut env = env.clone();
 
-    for el in els {
-        let text = match el {
-            Element::Text(text) => text,
-            Element::Value(ast) => {
-                let loc = ast.loc.clone();
-                let data = env.eval(&ctx, ast).map_err(Error::Shtml)?;
-
-                match &data.value {
-                    MalVal::Nil => "".to_string(),
-                    MalVal::Str(value) => value.to_string(),
-                    MalVal::Int(value) => value.to_string(),
-                    MalVal::Float(value) => value.to_string(),
-                    MalVal::Bool(value) => value.to_string(),
-                    _ => todo!(
-                        "cannot embed ({}) {} at {}",
-                        data.value.type_name(),
-                        data.value,
-                        loc
-                    ),
-                }
-            }
-        };
-
-        let mut cur = Cursor::new(text);
-        _ = io::copy(&mut cur, &mut out).map_err(|e| Error::CopySiteFile(path.to_string(), e))?
-    }
+    let text = load::shtml(&ctx, &mut env, path, from.join(path)).map_err(Error::LoadShtml)?;
+    _ = io::copy(&mut Cursor::new(text), &mut out)
+        .map_err(|e| Error::CopySiteFile(path.to_string(), e))?;
 
     Ok(())
 }
@@ -283,15 +254,15 @@ fn eval(env: &mut Env, root: Rc<PathBuf>, file: &str) -> Result<Rc<MalData>, Err
     Ok(env.eval(&ctx, ast)?)
 }
 
-fn read_file(base: &Path, file: &str) -> Result<String, Error> {
+fn read_file(base: &Path, file: &str) -> Result<fs::File, Error> {
     let path = base.join(file);
-    std::fs::read_to_string(path).map_err(|e| Error::ReadFile(file.to_string(), e))
+    fs::File::open(path).map_err(|e| Error::ReadFile(file.to_string(), e))
 }
 
 fn parse_mal(base: &Path, file: &str) -> Result<Rc<MalData>, Error> {
     let contents = read_file(base, file)?;
     let loc = Location::file(file);
-    let vec = reader::parse(loc.clone(), &contents)
+    let vec = reader::parse_reader(loc.clone(), contents)
         .map_err(|e| Error::ParseFile(file.to_string(), e.to_string()))?;
 
     let mut ls = List::from_vec(vec);
@@ -317,6 +288,8 @@ pub enum Error {
     CreateFile(String, io::Error),
     #[error("couldn't remove dir '{0}': {1}")]
     RemoveDir(String, io::Error),
+    #[error(transparent)]
+    LoadShtml(#[from] shtml::load::Error),
     #[error(transparent)]
     Shtml(#[from] shtml::Error),
     #[error("invalid UTF-8 in path, '{0}'")]

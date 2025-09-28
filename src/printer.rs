@@ -73,6 +73,26 @@ fn display(value: &MalVal, f: &mut fmt::Formatter<'_>, mut quote: bool) -> fmt::
         }) => write!(f, "#<macro>"),
         MalVal::Env(env) => write!(f, "#<env:{}>", env.name()),
         MalVal::Nil => write!(f, "nil"),
+        MalVal::Html(html) => {
+            write!(f, "<{}", html.tag)?;
+            for (key, value) in &html.properties {
+                write!(f, " {key}")?;
+                if let Some(value) = value {
+                    write!(f, "={value}")?;
+                }
+            }
+            if let Some(children) = &html.children {
+                write!(f, ">")?;
+                for child in children {
+                    display(&child.value, f, quote)?;
+                }
+                write!(f, "</{}>", html.tag)?;
+            } else {
+                write!(f, " />")?;
+            }
+
+            Ok(())
+        }
     }
 }
 

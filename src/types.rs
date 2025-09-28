@@ -1,5 +1,5 @@
 use std::{
-    iter,
+    fmt, iter,
     path::{Path, PathBuf},
     rc::Rc,
     slice, vec,
@@ -38,6 +38,7 @@ pub enum MalVal {
     Fn(MalFn),
     Env(Env),
     Nil,
+    Html(Html),
 }
 
 impl MalData {
@@ -73,6 +74,7 @@ impl MalVal {
     pub const MACRO: &str = "macro";
     pub const ENV: &str = "env";
     pub const NIL: &str = "nil";
+    pub const HTML: &str = "html";
 
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -89,6 +91,7 @@ impl MalVal {
             MalVal::Special(_, _) => Self::MACRO,
             MalVal::Env(_) => Self::ENV,
             MalVal::Nil => Self::NIL,
+            MalVal::Html(_) => Self::HTML,
         }
     }
 }
@@ -216,6 +219,36 @@ impl List {
     pub fn append(&mut self, other: &mut List) {
         other.0.append(&mut self.0);
         std::mem::swap(self, other);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Html {
+    pub tag: String,
+    pub properties: Vec<(String, Option<String>)>,
+    pub children: Option<Vec<Rc<MalData>>>,
+}
+
+impl fmt::Display for Html {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{}", self.tag)?;
+        for (key, value) in &self.properties {
+            write!(f, " {key}")?;
+            if let Some(value) = value {
+                write!(f, "={value}")?;
+            }
+        }
+        if let Some(children) = &self.children {
+            write!(f, ">")?;
+            for child in children {
+                write!(f, "{}", child.value)?;
+            }
+            write!(f, "</{}>", self.tag)?;
+        } else {
+            write!(f, " />")?;
+        }
+
+        Ok(())
     }
 }
 
