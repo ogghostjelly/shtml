@@ -227,6 +227,7 @@ pub struct Html {
     pub tag: Option<String>,
     pub properties: Vec<HtmlProperty>,
     pub children: Option<Vec<HtmlText>>,
+    pub has_doctype: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -243,19 +244,24 @@ pub enum HtmlText {
 
 impl fmt::Display for Html {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.has_doctype {
+            writeln!(f, "<!DOCTYPE html>")?;
+        }
         if let Some(tag) = &self.tag {
             write!(f, "<{tag}")?;
-            for prop in &self.properties {
-                write!(f, " ")?;
-                match prop {
-                    HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=@{}", value.value)?,
-                    HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
-                    HtmlProperty::Key(key) => write!(f, "@{}", key.value)?,
-                }
+        }
+        for prop in &self.properties {
+            write!(f, " ")?;
+            match prop {
+                HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=@{}", value.value)?,
+                HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
+                HtmlProperty::Key(key) => write!(f, "@{}", key.value)?,
             }
         }
         if let Some(children) = &self.children {
-            write!(f, ">")?;
+            if self.tag.is_some() {
+                write!(f, ">")?;
+            }
             for child in children {
                 match child {
                     HtmlText::Text(text) => write!(f, "{}", text.replace('@', "@@"))?,
@@ -268,7 +274,7 @@ impl fmt::Display for Html {
             if let Some(tag) = &self.tag {
                 write!(f, "</{tag}>")?;
             }
-        } else {
+        } else if self.tag.is_some() {
             write!(f, " />")?;
         }
 

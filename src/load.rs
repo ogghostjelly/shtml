@@ -38,22 +38,27 @@ fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
         MalVal::Bool(value) => write!(f, "{value}"),
         MalVal::Nil => Ok(()),
         MalVal::Html(html) => {
+            if html.has_doctype {
+                writeln!(f, "<!DOCTYPE html>")?;
+            }
             if let Some(tag) = &html.tag {
                 write!(f, "<{tag}")?;
-                for prop in &html.properties {
-                    write!(f, " ")?;
-                    match prop {
-                        HtmlProperty::Kvp(key, Some(value)) => {
-                            write!(f, "{key}=")?;
-                            embed(f, value)?;
-                        }
-                        HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
-                        HtmlProperty::Key(key) => embed(f, key)?,
+            }
+            for prop in &html.properties {
+                write!(f, " ")?;
+                match prop {
+                    HtmlProperty::Kvp(key, Some(value)) => {
+                        write!(f, "{key}=")?;
+                        embed(f, value)?;
                     }
+                    HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
+                    HtmlProperty::Key(key) => embed(f, key)?,
                 }
             }
             if let Some(children) = &html.children {
-                write!(f, ">")?;
+                if html.tag.is_some() {
+                    write!(f, ">")?;
+                }
                 for child in children {
                     match child {
                         HtmlText::Text(text) => write!(f, "{text}")?,
@@ -63,7 +68,7 @@ fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
                 if let Some(tag) = &html.tag {
                     write!(f, "</{tag}>")?;
                 }
-            } else {
+            } else if html.tag.is_some() {
                 write!(f, " />")?;
             }
 

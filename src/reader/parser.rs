@@ -121,6 +121,7 @@ where
                         tag: Some(open.tag.clone()),
                         properties: open.properties.clone(),
                         children: None,
+                        has_doctype: open.has_doctype,
                     });
                 }
             }
@@ -160,6 +161,7 @@ where
                             tag: Some(tag.tag),
                             properties: open.properties.clone(),
                             children: Some(children),
+                            has_doctype: open.has_doctype,
                         });
                     }
                 }
@@ -180,6 +182,7 @@ where
                     tag: None,
                     properties: vec![],
                     children: Some(children),
+                    has_doctype: false,
                 })
             }
         }
@@ -218,6 +221,7 @@ where
         fn to_html_tag(
             tag: String,
             properties: Vec<HtmlProperty>,
+            has_doctype: bool,
             close: bool,
             void: bool,
         ) -> HtmlTag {
@@ -226,29 +230,35 @@ where
                     tag,
                     properties,
                     tag_type: HtmlTagType::Void,
+                    has_doctype,
                 }
             } else if close {
                 HtmlTag {
                     tag,
                     properties,
                     tag_type: HtmlTagType::Close,
+                    has_doctype,
                 }
             } else {
                 HtmlTag {
                     tag,
                     properties,
                     tag_type: HtmlTagType::Open,
+                    has_doctype,
                 }
             }
         }
 
-        if self.take("<!DOCTYPE ")? {
+        let has_doctype = if self.take("<!DOCTYPE ")? {
             _ = self.take_while(|ch| ch != '>')?;
             let Char::Char('>') = self.pop()? else {
                 return Err(Error::Expected('>'));
             };
             self.skip_any_whitespace()?;
-        }
+            true
+        } else {
+            false
+        };
 
         // Take opening '<'
         let Char::Char('<') = self.pop()? else {
@@ -274,7 +284,7 @@ where
         loop {
             self.skip_any_whitespace()?;
             if let Some(void) = self.parse_html_tag_end(close, void)? {
-                return Ok(Some(to_html_tag(tag, properties, close, void)));
+                return Ok(Some(to_html_tag(tag, properties, has_doctype, close, void)));
             }
 
             let key = match self.parse_escaped_value()? {
@@ -529,6 +539,7 @@ struct HtmlTag {
     tag: String,
     properties: Vec<HtmlProperty>,
     tag_type: HtmlTagType,
+    has_doctype: bool,
 }
 
 #[derive(Debug)]

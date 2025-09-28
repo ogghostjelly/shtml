@@ -363,16 +363,32 @@ impl Env {
             }
         }
 
-        let x = html.children;
+        let children = if let Some(children) = html.children {
+            let mut out_children = Vec::with_capacity(children.len());
 
-        Ok(self.eval(
+            for child in children {
+                match child {
+                    HtmlText::Text(value) => {
+                        out_children.push(MalVal::Str(value).with_loc(loc.clone()))
+                    }
+                    HtmlText::Value(value) => out_children.push(value),
+                }
+            }
+
+            MalVal::Vector(out_children).with_loc(loc.clone())
+        } else {
+            MalVal::Nil.with_loc(loc.clone())
+        };
+
+        self.eval(
             ctx,
             list!(
                 MalVal::Sym(tag.clone()).with_loc(loc.clone()),
-                MalVal::Map(properties).with_loc(loc.clone())
+                MalVal::Map(properties).with_loc(loc.clone()),
+                children,
             )
             .with_loc(loc),
-        )?)
+        )
     }
 }
 

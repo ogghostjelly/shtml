@@ -26,7 +26,7 @@
     (load-shtml e src))
 
 (defn! x@include
-    [params]
+    [params children]
     (def! params (map/take params 'src))
     (include (fst params) (snd params)))
 
