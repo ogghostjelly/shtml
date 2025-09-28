@@ -24,10 +24,10 @@ impl<I> Reader<I>
 where
     I: Iterator<Item = Result<char>>,
 {
-    pub fn new(iter: I, buf_capacity: usize, loc: Location) -> Self {
+    pub fn new(iter: I, loc: Location) -> Self {
         Self {
             iter,
-            buf: Vec::with_capacity(buf_capacity),
+            buf: Vec::with_capacity(BUF_CAPACITY),
             buf_ptr: 0,
             loc,
         }
@@ -35,7 +35,7 @@ where
 
     #[inline]
     pub fn from_iter(iter: I, loc: Location) -> Self {
-        Self::new(iter, BUF_CAPACITY, loc)
+        Self::new(iter, loc)
     }
 }
 
@@ -91,7 +91,9 @@ where
     pub fn take(&mut self, s: &str) -> Result<bool> {
         for (i, ch) in s.char_indices() {
             if Char::Char(ch) != self.pop()? {
-                self.buf_ptr -= i + 1;
+                // NOTE: If the previous pop() returned EOF
+                // the buf_ptr is not incremented and subtracting from it can cause underflow
+                self.buf_ptr = self.buf_ptr.saturating_sub(i + 1);
                 assert!(self.buf_ptr <= self.buf.len());
                 return Ok(false);
             }

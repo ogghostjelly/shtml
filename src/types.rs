@@ -253,7 +253,7 @@ impl fmt::Display for Html {
         for prop in &self.properties {
             write!(f, " ")?;
             match prop {
-                HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=@{}", value.value)?,
+                HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=\"@{}\"", value.value)?,
                 HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
                 HtmlProperty::Key(key) => write!(f, "@{}", key.value)?,
             }

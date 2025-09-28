@@ -309,24 +309,25 @@ where
 
             if let Char::Char(ch @ '=') = self.peek()? {
                 self.next(ch);
-                let value = match self.parse_escaped_value()? {
+                self.skip_any_whitespace()?;
+
+                let value = match self.parse_string()? {
+                    Some(value) => value,
+                    None => self
+                        .take_while(|ch| !ch.is_whitespace() && ch != '>')?
+                        .unwrap_or("".to_string()),
+                };
+
+                let mut r = Reader::from_chars(value.chars(), self.loc());
+
+                let value = match r.parse_escaped_value()? {
                     Some(EscapedValue::Value(value)) => value,
                     Some(EscapedValue::Escaped) => {
-                        let mut value = self
-                            .take_while(is_valid_tag_char)?
-                            .ok_or(Error::Expected('>'))?;
-                        value.insert(0, '@');
+                        let mut value = value;
+                        value.remove(0);
                         Some(MalVal::Str(value).with_loc(self.loc()))
                     }
-                    None => {
-                        let s = match self.parse_string()? {
-                            Some(value) => value,
-                            None => self
-                                .take_while(is_valid_tag_char)?
-                                .ok_or(Error::Expected('>'))?,
-                        };
-                        Some(MalVal::Str(s).with_loc(self.loc()))
-                    }
+                    None => Some(MalVal::Str(value).with_loc(self.loc())),
                 };
 
                 properties.push(HtmlProperty::Kvp(key, value));
