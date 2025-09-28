@@ -232,7 +232,7 @@ pub struct Html {
 #[derive(Debug, Clone)]
 pub enum HtmlProperty {
     Kvp(String, Option<Rc<MalData>>),
-    Key(Option<Rc<MalData>>),
+    Key(Rc<MalData>),
 }
 
 #[derive(Debug, Clone)]
@@ -249,8 +249,7 @@ impl fmt::Display for Html {
             match prop {
                 HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=@{}", value.value)?,
                 HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
-                HtmlProperty::Key(Some(key)) => write!(f, "@{}", key.value)?,
-                HtmlProperty::Key(None) => {}
+                HtmlProperty::Key(key) => write!(f, "@{}", key.value)?,
             }
         }
         if let Some(children) = &self.children {

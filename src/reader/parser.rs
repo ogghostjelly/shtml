@@ -95,18 +95,10 @@ where
         ))
     }
 
-    fn parse_html(&mut self) -> Result<Option<Html>> {
+    pub fn parse_html(&mut self) -> Result<Option<Html>> {
         let Char::Char('<') = self.peek()? else {
             return Ok(None);
         };
-
-        if self.take("<!DOCTYPE ")? {
-            _ = self.take_while(|ch| ch != '>')?;
-            let Char::Char('>') = self.pop()? else {
-                return Err(Error::Expected('>'));
-            };
-            self.skip_any_whitespace()?;
-        }
 
         let Some(tag) = self.parse_html_tag()? else {
             return Err(Error::InvalidHtml);
@@ -234,6 +226,14 @@ where
             }
         }
 
+        if self.take("<!DOCTYPE ")? {
+            _ = self.take_while(|ch| ch != '>')?;
+            let Char::Char('>') = self.pop()? else {
+                return Err(Error::Expected('>'));
+            };
+            self.skip_any_whitespace()?;
+        }
+
         // Take opening '<'
         let Char::Char('<') = self.pop()? else {
             return Ok(None);
@@ -262,10 +262,11 @@ where
             }
 
             let key = match self.parse_escaped_value()? {
-                Some(EscapedValue::Value(value)) => {
+                Some(EscapedValue::Value(Some(value))) => {
                     properties.push(HtmlProperty::Key(value));
                     continue;
                 }
+                Some(EscapedValue::Value(None)) => continue,
                 Some(EscapedValue::Escaped) => {
                     let mut key = self
                         .take_while(is_valid_prop_char)?
@@ -291,13 +292,15 @@ where
                         value.insert(0, '@');
                         Some(MalVal::Str(value).with_loc(self.loc()))
                     }
-                    None => Some(
-                        MalVal::Str(
-                            self.take_while(is_valid_tag_char)?
+                    None => {
+                        let s = match self.parse_string()? {
+                            Some(value) => value,
+                            None => self
+                                .take_while(is_valid_tag_char)?
                                 .ok_or(Error::Expected('>'))?,
-                        )
-                        .with_loc(self.loc()),
-                    ),
+                        };
+                        Some(MalVal::Str(s).with_loc(self.loc()))
+                    }
                 };
 
                 properties.push(HtmlProperty::Kvp(key, value));
@@ -441,7 +444,10 @@ where
 
     fn parse_atom(&mut self) -> Result<Rc<MalData>> {
         let Some(symbol) = self.take_while(is_valid_char)? else {
-            return Err(Error::InvalidChar);
+            return Err(Error::InvalidChar(
+                self.take_while(|ch| !ch.is_whitespace())?
+                    .unwrap_or("".to_string()),
+            ));
         };
 
         if is_num(&symbol) {
@@ -552,8 +558,8 @@ pub enum Error {
     DuplicateMapKey(MalKey, Box<MalVal>),
     #[error("map key without value")]
     KeyWithoutValue(MalKey),
-    #[error("invalid char")]
-    InvalidChar,
+    #[error("invalid char in {0:?}")]
+    InvalidChar(String),
     #[error("invalid html")]
     InvalidHtml,
     #[error("unclosed html tag '{0}' at '{1}'")]

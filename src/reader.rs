@@ -2,23 +2,38 @@ use std::{io, rc::Rc};
 
 use derive_more::Display;
 
-use crate::types::MalData;
+use crate::types::{MalData, MalVal};
 
 mod internal;
 mod parser;
 pub use parser::is_valid_char;
 
-pub fn parse_str(loc: Location, s: &str) -> Result<Vec<Rc<MalData>>> {
+pub fn parse_mal_str(loc: Location, s: &str) -> Result<Vec<Rc<MalData>>> {
     let r = internal::Reader::from_chars(s.chars(), loc);
     try_reader(r, |r| r.parse_file())
 }
 
-pub fn parse_reader<R>(loc: Location, reader: R) -> Result<Vec<Rc<MalData>>>
+pub fn parse_mal_reader<R>(loc: Location, reader: R) -> Result<Vec<Rc<MalData>>>
 where
     R: io::Read,
 {
     let r = internal::Reader::from_unicode_reader(reader, loc);
     try_reader(r, |r| r.parse_file())
+}
+
+pub fn parse_html_reader<R>(loc: Location, reader: R) -> Result<Rc<MalData>>
+where
+    R: io::Read,
+{
+    let r = internal::Reader::from_unicode_reader(reader, loc);
+    let loc = r.loc();
+    let Some(html) = try_reader(r, |r| r.parse_html())? else {
+        return Err(Error {
+            loc,
+            inner: parser::Error::InvalidHtml,
+        });
+    };
+    Ok(MalVal::Html(html).with_loc(loc))
 }
 
 fn try_reader<I, T>(

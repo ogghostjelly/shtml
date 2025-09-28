@@ -23,7 +23,7 @@ pub fn std(data: &mut Env) {
 }
 
 fn std_mal(data: &mut Env) {
-    let ast = reader::parse_str(Location::file("std.mal"), include_str!("std.mal"))
+    let ast = reader::parse_mal_str(Location::file("std.mal"), include_str!("std.mal"))
         .expect("parsing 'std.mal' should never fail");
 
     for value in ast {

@@ -53,7 +53,7 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
             Ok(input) => {
                 let _ = rl.add_history_entry(&input);
 
-                match reader::parse_str(loc.clone(), &input) {
+                match reader::parse_mal_str(loc.clone(), &input) {
                     Ok(vals) => {
                         for value in vals {
                             match env.eval(&src, value) {
@@ -262,7 +262,7 @@ fn read_file(base: &Path, file: &str) -> Result<fs::File, Error> {
 fn parse_mal(base: &Path, file: &str) -> Result<Rc<MalData>, Error> {
     let contents = read_file(base, file)?;
     let loc = Location::file(file);
-    let vec = reader::parse_reader(loc.clone(), contents)
+    let vec = reader::parse_mal_reader(loc.clone(), contents)
         .map_err(|e| Error::ParseFile(file.to_string(), e.to_string()))?;
 
     let mut ls = List::from_vec(vec);

@@ -3,9 +3,10 @@ use std::{collections::HashMap, rc::Rc};
 use indexmap::IndexMap;
 
 use crate::{
+    list,
     ns::{self, apply_map},
     reader::Location,
-    types::{CallContext, HtmlProperty, HtmlText, List, MalData, MalFn, MalVal},
+    types::{CallContext, HtmlProperty, HtmlText, List, MalData, MalFn, MalKey, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -144,7 +145,7 @@ impl Env {
 
                     for prop in &mut html.properties {
                         match prop {
-                            HtmlProperty::Kvp(_, Some(value)) | HtmlProperty::Key(Some(value)) => {
+                            HtmlProperty::Kvp(_, Some(value)) | HtmlProperty::Key(value) => {
                                 has_changed = true;
                                 *value = self.eval(ctx, Rc::clone(value))?;
                             }
@@ -164,7 +165,45 @@ impl Env {
                         }
                     }
 
-                    return Ok(if has_changed {
+                    return Ok(if html.tag.starts_with("x@") {
+                        let mut properties = IndexMap::new();
+
+                        for prop in html.properties {
+                            match prop {
+                                HtmlProperty::Kvp(key, value) => {
+                                    let value = match value {
+                                        Some(value) => value,
+                                        None => MalVal::Bool(true).with_loc(ast.loc.clone()),
+                                    };
+
+                                    properties.insert(MalKey::Sym(key), value);
+                                }
+                                HtmlProperty::Key(value) => {
+                                    let Some(key) = MalKey::from_value(&value.value) else {
+                                        return Err(Error::new(
+                                            ErrorKind::InvalidMapKey(value.type_name()),
+                                            ctx,
+                                            ast.loc.clone(),
+                                        ));
+                                    };
+
+                                    properties
+                                        .insert(key, MalVal::Bool(true).with_loc(ast.loc.clone()));
+                                }
+                            }
+                        }
+
+                        let x = html.children;
+
+                        self.eval(
+                            ctx,
+                            list!(
+                                MalVal::Sym(html.tag.clone()).with_loc(ast.loc.clone()),
+                                MalVal::Map(properties).with_loc(ast.loc.clone())
+                            )
+                            .with_loc(ast.loc.clone()),
+                        )?
+                    } else if has_changed {
                         MalVal::Html(html).with_loc(ast.loc.clone())
                     } else {
                         ast

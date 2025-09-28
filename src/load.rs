@@ -19,15 +19,11 @@ pub fn shtml(
 
     let file_loc = Location::file(rel_path);
 
-    match reader::parse_reader(file_loc.clone(), input) {
-        Ok(els) => {
+    match reader::parse_html_reader(file_loc.clone(), input) {
+        Ok(ast) => {
             let ctx = ctx.inner(rel_path);
             let mut value = String::new();
-
-            for ast in els {
-                embed(&mut value, &env.eval(&ctx, ast).map_err(Error::SHtml)?)?;
-            }
-
+            embed(&mut value, &env.eval(&ctx, ast).map_err(Error::SHtml)?)?;
             Ok(value)
         }
         Err(e) => Err(Error::Parse(e.to_string())),
@@ -51,8 +47,7 @@ fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
                         embed(f, value)?;
                     }
                     HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
-                    HtmlProperty::Key(Some(key)) => embed(f, key)?,
-                    HtmlProperty::Key(None) => {}
+                    HtmlProperty::Key(key) => embed(f, key)?,
                 }
             }
             if let Some(children) = &html.children {
@@ -88,7 +83,7 @@ pub fn mal(
 
     let file_loc = Location::file(rel_path);
 
-    match reader::parse_reader(file_loc.clone(), input) {
+    match reader::parse_mal_reader(file_loc.clone(), input) {
         Ok(vals) => {
             let mut vals = List::from_vec(vals);
             vals.push_front(MalVal::Sym("do".into()).with_loc(file_loc.clone()));
