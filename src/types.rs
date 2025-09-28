@@ -224,7 +224,7 @@ impl List {
 
 #[derive(Debug, Clone)]
 pub struct Html {
-    pub tag: String,
+    pub tag: Option<String>,
     pub properties: Vec<HtmlProperty>,
     pub children: Option<Vec<HtmlText>>,
 }
@@ -243,13 +243,15 @@ pub enum HtmlText {
 
 impl fmt::Display for Html {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "<{}", self.tag)?;
-        for prop in &self.properties {
-            write!(f, " ")?;
-            match prop {
-                HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=@{}", value.value)?,
-                HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
-                HtmlProperty::Key(key) => write!(f, "@{}", key.value)?,
+        if let Some(tag) = &self.tag {
+            write!(f, "<{tag}")?;
+            for prop in &self.properties {
+                write!(f, " ")?;
+                match prop {
+                    HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=@{}", value.value)?,
+                    HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
+                    HtmlProperty::Key(key) => write!(f, "@{}", key.value)?,
+                }
             }
         }
         if let Some(children) = &self.children {
@@ -263,7 +265,9 @@ impl fmt::Display for Html {
                     },
                 }
             }
-            write!(f, "</{}>", self.tag)?;
+            if let Some(tag) = &self.tag {
+                write!(f, "</{tag}>")?;
+            }
         } else {
             write!(f, " />")?;
         }

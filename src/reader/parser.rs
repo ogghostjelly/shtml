@@ -95,7 +95,12 @@ where
         ))
     }
 
-    pub fn parse_html(&mut self) -> Result<Option<Html>> {
+    #[inline]
+    pub fn parse_html_file(&mut self) -> Result<Html> {
+        self.parse_html_inner(None)
+    }
+
+    fn parse_html(&mut self) -> Result<Option<Html>> {
         let Char::Char('<') = self.peek()? else {
             return Ok(None);
         };
@@ -104,18 +109,20 @@ where
             return Err(Error::InvalidHtml);
         };
 
-        self.parse_html_inner(tag).map(Some)
+        self.parse_html_inner(Some(tag)).map(Some)
     }
 
-    fn parse_html_inner(&mut self, open: HtmlTag) -> Result<Html> {
-        match open.tag_type {
-            HtmlTagType::Open => {}
-            HtmlTagType::Close | HtmlTagType::Void => {
-                return Ok(Html {
-                    tag: open.tag,
-                    properties: open.properties,
-                    children: None,
-                });
+    fn parse_html_inner(&mut self, open: Option<HtmlTag>) -> Result<Html> {
+        if let Some(open) = &open {
+            match open.tag_type {
+                HtmlTagType::Open => {}
+                HtmlTagType::Close | HtmlTagType::Void => {
+                    return Ok(Html {
+                        tag: Some(open.tag.clone()),
+                        properties: open.properties.clone(),
+                        children: None,
+                    });
+                }
             }
         }
 
@@ -138,35 +145,44 @@ where
 
             self.flush();
 
-            match self.parse_html_tag()? {
-                Some(HtmlTag {
-                    tag,
-                    properties: _,
-                    tag_type: HtmlTagType::Close,
-                }) if tag == open.tag => {
-                    children.push(HtmlText::Text(std::mem::take(&mut s)));
-                    return Ok(Html {
-                        tag: open.tag,
-                        properties: open.properties,
-                        children: Some(children),
-                    });
-                }
-                Some(tag) => {
-                    children.push(HtmlText::Text(std::mem::take(&mut s)));
-                    let loc = self.loc();
-                    children.push(HtmlText::Value(
-                        MalVal::Html(self.parse_html_inner(tag)?).with_loc(loc),
-                    ));
-                }
-                None => {
-                    self.rewind();
-                    self.next(ch);
-                    s.push(ch);
+            let Some(tag) = self.parse_html_tag()? else {
+                self.rewind();
+                self.next(ch);
+                s.push(ch);
+                continue;
+            };
+
+            if matches!(tag.tag_type, HtmlTagType::Close) {
+                if let Some(open) = &open {
+                    if tag.tag == open.tag {
+                        children.push(HtmlText::Text(std::mem::take(&mut s)));
+                        return Ok(Html {
+                            tag: Some(tag.tag),
+                            properties: open.properties.clone(),
+                            children: Some(children),
+                        });
+                    }
                 }
             }
+
+            children.push(HtmlText::Text(std::mem::take(&mut s)));
+            let loc = self.loc();
+            children.push(HtmlText::Value(
+                MalVal::Html(self.parse_html_inner(Some(tag))?).with_loc(loc),
+            ));
         }
 
-        Err(Error::HtmlUnclosedTag(open.tag, start_loc))
+        match open {
+            Some(open) => Err(Error::HtmlUnclosedTag(open.tag, start_loc)),
+            None => {
+                children.push(HtmlText::Text(std::mem::take(&mut s)));
+                Ok(Html {
+                    tag: None,
+                    properties: vec![],
+                    children: Some(children),
+                })
+            }
+        }
     }
 
     fn parse_html_tag(&mut self) -> Result<Option<HtmlTag>> {

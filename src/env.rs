@@ -6,7 +6,7 @@ use crate::{
     list,
     ns::{self, apply_map},
     reader::Location,
-    types::{CallContext, HtmlProperty, HtmlText, List, MalData, MalFn, MalKey, MalVal},
+    types::{CallContext, Html, HtmlProperty, HtmlText, List, MalData, MalFn, MalKey, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -165,45 +165,14 @@ impl Env {
                         }
                     }
 
-                    return Ok(if html.tag.starts_with("x@") {
-                        let mut properties = IndexMap::new();
-
-                        for prop in html.properties {
-                            match prop {
-                                HtmlProperty::Kvp(key, value) => {
-                                    let value = match value {
-                                        Some(value) => value,
-                                        None => MalVal::Bool(true).with_loc(ast.loc.clone()),
-                                    };
-
-                                    properties.insert(MalKey::Sym(key), value);
-                                }
-                                HtmlProperty::Key(value) => {
-                                    let Some(key) = MalKey::from_value(&value.value) else {
-                                        return Err(Error::new(
-                                            ErrorKind::InvalidMapKey(value.type_name()),
-                                            ctx,
-                                            ast.loc.clone(),
-                                        ));
-                                    };
-
-                                    properties
-                                        .insert(key, MalVal::Bool(true).with_loc(ast.loc.clone()));
-                                }
-                            }
+                    if let Some(tag) = &html.tag {
+                        if tag.starts_with("x@") {
+                            let tag = tag.clone();
+                            return self.eval_html(ctx, (html, ast.loc.clone()), tag);
                         }
+                    }
 
-                        let x = html.children;
-
-                        self.eval(
-                            ctx,
-                            list!(
-                                MalVal::Sym(html.tag.clone()).with_loc(ast.loc.clone()),
-                                MalVal::Map(properties).with_loc(ast.loc.clone())
-                            )
-                            .with_loc(ast.loc.clone()),
-                        )?
-                    } else if has_changed {
+                    return Ok(if has_changed {
                         MalVal::Html(html).with_loc(ast.loc.clone())
                     } else {
                         ast
@@ -360,6 +329,50 @@ impl Env {
                 loc.clone(),
             )),
         }
+    }
+
+    fn eval_html(
+        &mut self,
+        ctx: &CallContext,
+        (html, loc): (Html, Location),
+        tag: String,
+    ) -> MalRet {
+        let mut properties = IndexMap::new();
+
+        for prop in html.properties {
+            match prop {
+                HtmlProperty::Kvp(key, value) => {
+                    let value = match value {
+                        Some(value) => value,
+                        None => MalVal::Bool(true).with_loc(loc.clone()),
+                    };
+
+                    properties.insert(MalKey::Sym(key), value);
+                }
+                HtmlProperty::Key(value) => {
+                    let Some(key) = MalKey::from_value(&value.value) else {
+                        return Err(Error::new(
+                            ErrorKind::InvalidMapKey(value.type_name()),
+                            ctx,
+                            loc,
+                        ));
+                    };
+
+                    properties.insert(key, MalVal::Bool(true).with_loc(loc.clone()));
+                }
+            }
+        }
+
+        let x = html.children;
+
+        Ok(self.eval(
+            ctx,
+            list!(
+                MalVal::Sym(tag.clone()).with_loc(loc.clone()),
+                MalVal::Map(properties).with_loc(loc.clone())
+            )
+            .with_loc(loc),
+        )?)
     }
 }
 

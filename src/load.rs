@@ -38,16 +38,18 @@ fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
         MalVal::Bool(value) => write!(f, "{value}"),
         MalVal::Nil => Ok(()),
         MalVal::Html(html) => {
-            write!(f, "<{}", html.tag)?;
-            for prop in &html.properties {
-                write!(f, " ")?;
-                match prop {
-                    HtmlProperty::Kvp(key, Some(value)) => {
-                        write!(f, "{key}=")?;
-                        embed(f, value)?;
+            if let Some(tag) = &html.tag {
+                write!(f, "<{tag}")?;
+                for prop in &html.properties {
+                    write!(f, " ")?;
+                    match prop {
+                        HtmlProperty::Kvp(key, Some(value)) => {
+                            write!(f, "{key}=")?;
+                            embed(f, value)?;
+                        }
+                        HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
+                        HtmlProperty::Key(key) => embed(f, key)?,
                     }
-                    HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
-                    HtmlProperty::Key(key) => embed(f, key)?,
                 }
             }
             if let Some(children) = &html.children {
@@ -58,7 +60,9 @@ fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
                         HtmlText::Value(value) => embed(f, value)?,
                     }
                 }
-                write!(f, "</{}>", html.tag)?;
+                if let Some(tag) = &html.tag {
+                    write!(f, "</{tag}>")?;
+                }
             } else {
                 write!(f, " />")?;
             }

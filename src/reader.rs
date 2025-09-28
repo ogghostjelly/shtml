@@ -27,12 +27,7 @@ where
 {
     let r = internal::Reader::from_unicode_reader(reader, loc);
     let loc = r.loc();
-    let Some(html) = try_reader(r, |r| r.parse_html())? else {
-        return Err(Error {
-            loc,
-            inner: parser::Error::InvalidHtml,
-        });
-    };
+    let html = try_reader(r, |r| r.parse_html_file())?;
     Ok(MalVal::Html(html).with_loc(loc))
 }
 
