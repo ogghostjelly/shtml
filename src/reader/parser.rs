@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     list,
     reader::internal::Char,
-    types::{Html, HtmlText, List, MalData, MalKey, MalVal},
+    types::{Html, HtmlProperty, HtmlText, List, MalData, MalKey, MalVal},
 };
 
 use super::{
@@ -132,18 +132,14 @@ where
         let mut children = vec![];
 
         while let Char::Char(ch) = self.peek()? {
-            if ch == '@' {
-                self.next(ch);
-
-                if let Char::Char(ch @ '@') = self.peek()? {
-                    self.next(ch);
-                    s.push('@');
-                    continue;
-                }
-
-                if let Some(value) = self.parse_value()? {
-                    children.push(HtmlText::Text(std::mem::take(&mut s)));
-                    children.push(HtmlText::Value(value));
+            if let Some(value) = self.parse_escaped_value()? {
+                match value {
+                    EscapedValue::Value(Some(value)) => {
+                        children.push(HtmlText::Text(std::mem::take(&mut s)));
+                        children.push(HtmlText::Value(value));
+                    }
+                    EscapedValue::Value(None) => {}
+                    EscapedValue::Escaped => s.push('@'),
                 }
                 continue;
             }
@@ -186,6 +182,10 @@ where
             !ch.is_whitespace() && ch != '>' && ch != '/'
         }
 
+        fn is_valid_prop_char(ch: char) -> bool {
+            is_valid_tag_char(ch) && ch != '='
+        }
+
         fn is_void_tag(tag: &str) -> bool {
             matches!(
                 tag,
@@ -207,7 +207,12 @@ where
             )
         }
 
-        fn to_html_tag(tag: String, properties: Vec<HtmlText>, close: bool, void: bool) -> HtmlTag {
+        fn to_html_tag(
+            tag: String,
+            properties: Vec<HtmlProperty>,
+            close: bool,
+            void: bool,
+        ) -> HtmlTag {
             if void {
                 HtmlTag {
                     tag,
@@ -249,35 +254,57 @@ where
 
         // Take tag properties.
         let mut properties = vec![];
-        let mut s = String::new();
 
-        while let Char::Char(ch) = self.peek()? {
+        loop {
+            self.skip_any_whitespace()?;
             if let Some(void) = self.parse_html_tag_end(close, void)? {
-                properties.push(HtmlText::Text(std::mem::take(&mut s)));
                 return Ok(Some(to_html_tag(tag, properties, close, void)));
             }
 
-            if ch == '@' {
-                self.next(ch);
-
-                if let Char::Char(ch @ '@') = self.peek()? {
-                    s.push(ch);
-                    self.next(ch);
+            let key = match self.parse_escaped_value()? {
+                Some(EscapedValue::Value(value)) => {
+                    properties.push(HtmlProperty::Key(value));
                     continue;
                 }
-
-                if let Some(value) = self.parse_value()? {
-                    properties.push(HtmlText::Text(std::mem::take(&mut s)));
-                    properties.push(HtmlText::Value(value));
+                Some(EscapedValue::Escaped) => {
+                    let mut key = self
+                        .take_while(is_valid_prop_char)?
+                        .ok_or(Error::Expected('>'))?;
+                    key.insert(0, '@');
+                    key
                 }
-                continue;
+                None => self
+                    .take_while(is_valid_prop_char)?
+                    .ok_or(Error::Expected('>'))?,
+            };
+
+            self.skip_any_whitespace()?;
+
+            if let Char::Char(ch @ '=') = self.peek()? {
+                self.next(ch);
+                let value = match self.parse_escaped_value()? {
+                    Some(EscapedValue::Value(value)) => value,
+                    Some(EscapedValue::Escaped) => {
+                        let mut value = self
+                            .take_while(is_valid_tag_char)?
+                            .ok_or(Error::Expected('>'))?;
+                        value.insert(0, '@');
+                        Some(MalVal::Str(value).with_loc(self.loc()))
+                    }
+                    None => Some(
+                        MalVal::Str(
+                            self.take_while(is_valid_tag_char)?
+                                .ok_or(Error::Expected('>'))?,
+                        )
+                        .with_loc(self.loc()),
+                    ),
+                };
+
+                properties.push(HtmlProperty::Kvp(key, value));
+            } else {
+                properties.push(HtmlProperty::Kvp(key, None));
             }
-
-            s.push(ch);
-            self.next(ch);
         }
-
-        Err(Error::Expected('>'))
     }
 
     fn parse_html_tag_end(&mut self, close: bool, void: bool) -> Result<Option<bool>> {
@@ -289,6 +316,20 @@ where
         };
 
         Ok(None)
+    }
+
+    fn parse_escaped_value(&mut self) -> Result<Option<EscapedValue>> {
+        let Char::Char(ch @ '@') = self.peek()? else {
+            return Ok(None);
+        };
+        self.next(ch);
+
+        Ok(Some(if let Char::Char(ch @ '@') = self.peek()? {
+            self.next(ch);
+            EscapedValue::Escaped
+        } else {
+            EscapedValue::Value(self.parse_value()?)
+        }))
     }
 
     fn parse_list(&mut self) -> Result<Option<List>> {
@@ -456,10 +497,15 @@ where
     }
 }
 
+enum EscapedValue {
+    Value(Option<Rc<MalData>>),
+    Escaped,
+}
+
 #[derive(Debug)]
 struct HtmlTag {
     tag: String,
-    properties: Vec<HtmlText>,
+    properties: Vec<HtmlProperty>,
     tag_type: HtmlTagType,
 }
 

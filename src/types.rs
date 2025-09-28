@@ -225,8 +225,14 @@ impl List {
 #[derive(Debug, Clone)]
 pub struct Html {
     pub tag: String,
-    pub properties: Vec<HtmlText>,
+    pub properties: Vec<HtmlProperty>,
     pub children: Option<Vec<HtmlText>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum HtmlProperty {
+    Kvp(String, Option<Rc<MalData>>),
+    Key(Option<Rc<MalData>>),
 }
 
 #[derive(Debug, Clone)]
@@ -239,9 +245,12 @@ impl fmt::Display for Html {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "<{}", self.tag)?;
         for prop in &self.properties {
+            write!(f, " ")?;
             match prop {
-                HtmlText::Text(value) => write!(f, "{value}")?,
-                HtmlText::Value(value) => write!(f, "{}", value.value)?,
+                HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=@{}", value.value)?,
+                HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
+                HtmlProperty::Key(Some(key)) => write!(f, "@{}", key.value)?,
+                HtmlProperty::Key(None) => {}
             }
         }
         if let Some(children) = &self.children {

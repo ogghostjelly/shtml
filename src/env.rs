@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     ns::{self, apply_map},
     reader::Location,
-    types::{CallContext, HtmlText, List, MalData, MalFn, MalVal},
+    types::{CallContext, HtmlProperty, HtmlText, List, MalData, MalFn, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -144,11 +144,11 @@ impl Env {
 
                     for prop in &mut html.properties {
                         match prop {
-                            HtmlText::Text(_) => {}
-                            HtmlText::Value(value) => {
+                            HtmlProperty::Kvp(_, Some(value)) | HtmlProperty::Key(Some(value)) => {
                                 has_changed = true;
                                 *value = self.eval(ctx, Rc::clone(value))?;
                             }
+                            _ => {}
                         }
                     }
 

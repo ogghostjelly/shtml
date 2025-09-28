@@ -3,7 +3,7 @@ use std::{fmt, fs, io, path::PathBuf, rc::Rc};
 use crate::{
     env::Env,
     reader::{self, Location},
-    types::{CallContext, HtmlText, List, MalData, MalVal},
+    types::{CallContext, HtmlProperty, HtmlText, List, MalData, MalVal},
 };
 
 pub fn shtml(
@@ -43,10 +43,16 @@ fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
         MalVal::Nil => Ok(()),
         MalVal::Html(html) => {
             write!(f, "<{}", html.tag)?;
-            for text in &html.properties {
-                match text {
-                    HtmlText::Text(text) => write!(f, "{text}")?,
-                    HtmlText::Value(value) => embed(f, value)?,
+            for prop in &html.properties {
+                write!(f, " ")?;
+                match prop {
+                    HtmlProperty::Kvp(key, Some(value)) => {
+                        write!(f, "{key}=")?;
+                        embed(f, value)?;
+                    }
+                    HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
+                    HtmlProperty::Key(Some(key)) => embed(f, key)?,
+                    HtmlProperty::Key(None) => {}
                 }
             }
             if let Some(children) = &html.children {
