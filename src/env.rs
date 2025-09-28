@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     ns::{self, apply_map},
     reader::Location,
-    types::{CallContext, List, MalData, MalFn, MalVal},
+    types::{CallContext, HtmlText, List, MalData, MalFn, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -138,6 +138,38 @@ impl Env {
                     }
                     return Ok(MalVal::Map(ret).with_loc(ast.loc.clone()));
                 }
+                MalVal::Html(html) => {
+                    let mut html = html.clone();
+                    let mut has_changed = false;
+
+                    for prop in &mut html.properties {
+                        match prop {
+                            HtmlText::Text(_) => {}
+                            HtmlText::Value(value) => {
+                                has_changed = true;
+                                *value = self.eval(ctx, Rc::clone(value))?;
+                            }
+                        }
+                    }
+
+                    if let Some(children) = &mut html.children {
+                        for child in children {
+                            match child {
+                                HtmlText::Text(_) => {}
+                                HtmlText::Value(value) => {
+                                    has_changed = true;
+                                    *value = self.eval(ctx, Rc::clone(value))?;
+                                }
+                            }
+                        }
+                    }
+
+                    return Ok(if has_changed {
+                        MalVal::Html(html).with_loc(ast.loc.clone())
+                    } else {
+                        ast
+                    });
+                }
                 MalVal::Sym(sym) => return self.get(ctx, &ast.loc, sym).cloned(),
                 MalVal::Str(_)
                 | MalVal::Nil
@@ -148,7 +180,6 @@ impl Env {
                 | MalVal::Kwd(_)
                 | MalVal::Int(_)
                 | MalVal::Float(_)
-                | MalVal::Html(_)
                 | MalVal::Bool(_) => return Ok(ast),
             }
         }

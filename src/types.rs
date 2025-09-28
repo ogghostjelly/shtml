@@ -225,23 +225,35 @@ impl List {
 #[derive(Debug, Clone)]
 pub struct Html {
     pub tag: String,
-    pub properties: Vec<(String, Option<String>)>,
-    pub children: Option<Vec<Rc<MalData>>>,
+    pub properties: Vec<HtmlText>,
+    pub children: Option<Vec<HtmlText>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum HtmlText {
+    Text(String),
+    Value(Rc<MalData>),
 }
 
 impl fmt::Display for Html {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "<{}", self.tag)?;
-        for (key, value) in &self.properties {
-            write!(f, " {key}")?;
-            if let Some(value) = value {
-                write!(f, "={value}")?;
+        for prop in &self.properties {
+            match prop {
+                HtmlText::Text(value) => write!(f, "{value}")?,
+                HtmlText::Value(value) => write!(f, "{}", value.value)?,
             }
         }
         if let Some(children) = &self.children {
             write!(f, ">")?;
             for child in children {
-                write!(f, "{}", child.value)?;
+                match child {
+                    HtmlText::Text(text) => write!(f, "{}", text.replace('@', "@@"))?,
+                    HtmlText::Value(value) => match &value.value {
+                        MalVal::Html(html) => write!(f, "{html}")?,
+                        _ => write!(f, "@{}", value.value)?,
+                    },
+                }
             }
             write!(f, "</{}>", self.tag)?;
         } else {

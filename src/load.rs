@@ -1,9 +1,9 @@
-use std::{fs, io, path::PathBuf, rc::Rc};
+use std::{fmt, fs, io, path::PathBuf, rc::Rc};
 
 use crate::{
     env::Env,
     reader::{self, Location},
-    types::{CallContext, List, MalData, MalVal},
+    types::{CallContext, HtmlText, List, MalData, MalVal},
 };
 
 pub fn shtml(
@@ -25,24 +25,48 @@ pub fn shtml(
             let mut value = String::new();
 
             for ast in els {
-                let data = env.eval(&ctx, ast).map_err(Error::SHtml)?;
-
-                let text = match &data.value {
-                    MalVal::Nil => "".to_string(),
-                    MalVal::Int(val) => val.to_string(),
-                    MalVal::Float(val) => val.to_string(),
-                    MalVal::Bool(val) => val.to_string(),
-                    MalVal::Str(val) => val.to_string(),
-                    _ => return Err(Error::CannotEmbed(data)),
-                };
-
-                value.push_str(&text);
+                embed(&mut value, &env.eval(&ctx, ast).map_err(Error::SHtml)?)?;
             }
 
             Ok(value)
         }
         Err(e) => Err(Error::Parse(e.to_string())),
     }
+}
+
+fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
+    match &value.value {
+        MalVal::Str(value) => write!(f, "{value}"),
+        MalVal::Int(value) => write!(f, "{value}"),
+        MalVal::Float(value) => write!(f, "{value}"),
+        MalVal::Bool(value) => write!(f, "{value}"),
+        MalVal::Nil => Ok(()),
+        MalVal::Html(html) => {
+            write!(f, "<{}", html.tag)?;
+            for text in &html.properties {
+                match text {
+                    HtmlText::Text(text) => write!(f, "{text}")?,
+                    HtmlText::Value(value) => embed(f, value)?,
+                }
+            }
+            if let Some(children) = &html.children {
+                write!(f, ">")?;
+                for child in children {
+                    match child {
+                        HtmlText::Text(text) => write!(f, "{text}")?,
+                        HtmlText::Value(value) => embed(f, value)?,
+                    }
+                }
+                write!(f, "</{}>", html.tag)?;
+            } else {
+                write!(f, " />")?;
+            }
+
+            Ok(())
+        }
+        _ => return Err(Error::CannotEmbed(Rc::clone(value))),
+    }
+    .map_err(Error::Fmt)
 }
 
 pub fn mal(
@@ -78,6 +102,8 @@ pub fn mal(
 pub enum Error {
     #[error("load shtml: io: {0}")]
     Io(io::Error),
+    #[error("load shtml: fmt: {0}")]
+    Fmt(#[from] fmt::Error),
     #[error("load shtml: couldn't parse {0}")]
     Parse(String),
     #[error("load shtml: {0}")]

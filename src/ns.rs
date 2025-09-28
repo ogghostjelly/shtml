@@ -299,6 +299,7 @@ mod fs {
                     ctx,
                     data.loc.clone(),
                 )),
+                load::Error::Fmt(_) => unreachable!("fmt is infallible"),
             },
         }
     }

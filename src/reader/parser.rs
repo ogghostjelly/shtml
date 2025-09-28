@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     list,
     reader::internal::Char,
-    types::{Html, List, MalData, MalKey, MalVal},
+    types::{Html, HtmlText, List, MalData, MalKey, MalVal},
 };
 
 use super::{
@@ -128,10 +128,26 @@ where
         }
 
         let start_loc = self.loc();
-        let mut s = (String::new(), self.loc());
+        let mut s = String::new();
         let mut children = vec![];
 
         while let Char::Char(ch) = self.peek()? {
+            if ch == '@' {
+                self.next(ch);
+
+                if let Char::Char(ch @ '@') = self.peek()? {
+                    self.next(ch);
+                    s.push('@');
+                    continue;
+                }
+
+                if let Some(value) = self.parse_value()? {
+                    children.push(HtmlText::Text(std::mem::take(&mut s)));
+                    children.push(HtmlText::Value(value));
+                }
+                continue;
+            }
+
             self.flush();
 
             match self.parse_html_tag()? {
@@ -140,6 +156,7 @@ where
                     properties: _,
                     tag_type: HtmlTagType::Close,
                 }) if tag == open.tag => {
+                    children.push(HtmlText::Text(std::mem::take(&mut s)));
                     return Ok(Html {
                         tag: open.tag,
                         properties: open.properties,
@@ -147,14 +164,16 @@ where
                     });
                 }
                 Some(tag) => {
-                    children.push(MalVal::Str(std::mem::take(&mut s.0)).with_loc(s.1));
-                    s.1 = self.loc();
-                    children.push(MalVal::Html(self.parse_html_inner(tag)?).with_loc(self.loc()));
+                    children.push(HtmlText::Text(std::mem::take(&mut s)));
+                    let loc = self.loc();
+                    children.push(HtmlText::Value(
+                        MalVal::Html(self.parse_html_inner(tag)?).with_loc(loc),
+                    ));
                 }
                 None => {
                     self.rewind();
-                    s.0.push(ch);
                     self.next(ch);
+                    s.push(ch);
                 }
             }
         }
@@ -165,10 +184,6 @@ where
     fn parse_html_tag(&mut self) -> Result<Option<HtmlTag>> {
         fn is_valid_tag_char(ch: char) -> bool {
             !ch.is_whitespace() && ch != '>' && ch != '/'
-        }
-
-        fn is_valid_prop_char(ch: char) -> bool {
-            is_valid_tag_char(ch) && ch != '='
         }
 
         fn is_void_tag(tag: &str) -> bool {
@@ -192,12 +207,7 @@ where
             )
         }
 
-        fn to_html_tag(
-            tag: String,
-            properties: Vec<(String, Option<String>)>,
-            close: bool,
-            void: bool,
-        ) -> HtmlTag {
+        fn to_html_tag(tag: String, properties: Vec<HtmlText>, close: bool, void: bool) -> HtmlTag {
             if void {
                 HtmlTag {
                     tag,
@@ -239,31 +249,35 @@ where
 
         // Take tag properties.
         let mut properties = vec![];
+        let mut s = String::new();
 
-        loop {
-            self.skip_any_whitespace()?;
-
+        while let Char::Char(ch) = self.peek()? {
             if let Some(void) = self.parse_html_tag_end(close, void)? {
+                properties.push(HtmlText::Text(std::mem::take(&mut s)));
                 return Ok(Some(to_html_tag(tag, properties, close, void)));
             }
-            let key = self
-                .take_while(is_valid_prop_char)?
-                .ok_or(Error::Expected('>'))?;
 
-            self.skip_any_whitespace()?;
+            if ch == '@' {
+                self.next(ch);
 
-            let value = if let Char::Char(tok @ '=') = self.peek()? {
-                self.next(tok);
-                Some(
-                    self.take_while(is_valid_prop_char)?
-                        .ok_or(Error::Expected('>'))?,
-                )
-            } else {
-                None
-            };
+                if let Char::Char(ch @ '@') = self.peek()? {
+                    s.push(ch);
+                    self.next(ch);
+                    continue;
+                }
 
-            properties.push((key, value));
+                if let Some(value) = self.parse_value()? {
+                    properties.push(HtmlText::Text(std::mem::take(&mut s)));
+                    properties.push(HtmlText::Value(value));
+                }
+                continue;
+            }
+
+            s.push(ch);
+            self.next(ch);
         }
+
+        Err(Error::Expected('>'))
     }
 
     fn parse_html_tag_end(&mut self, close: bool, void: bool) -> Result<Option<bool>> {
@@ -445,7 +459,7 @@ where
 #[derive(Debug)]
 struct HtmlTag {
     tag: String,
-    properties: Vec<(String, Option<String>)>,
+    properties: Vec<HtmlText>,
     tag_type: HtmlTagType,
 }
 
