@@ -246,6 +246,7 @@ pub fn fs(data: &mut Env) {
     data.set_fn(loc!(), "load-mal", fs::load_mal);
     data.set_fn(loc!(), "load-shtml", fs::load_shtml);
     data.set_fn(loc!(), "read-file", fs::read_file);
+    data.set_fn(loc!(), "read-dir", fs::read_dir);
 }
 
 mod fs {
@@ -312,6 +313,43 @@ mod fs {
             Ok(s) => Ok(MalVal::Str(s).with_loc(loc)),
             Err(e) => Err(Error::new(ErrorKind::Io(e), ctx, loc)),
         }
+    }
+
+    pub fn read_dir(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let dir = take_dir_context(ctx, &loc)?;
+        let [path] = take_exact(ctx, &loc, args)?;
+        let (_, path) = to_path(ctx, dir, path)?;
+
+        let dir = match fs::read_dir(&path) {
+            Ok(dir) => dir,
+            Err(e) => return Err(Error::new(ErrorKind::Io(e), ctx, loc)),
+        };
+
+        let mut paths = vec![];
+
+        for entry in dir {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => return Err(Error::new(ErrorKind::Io(e), ctx, loc)),
+            };
+
+            let path = entry
+                .path()
+                .strip_prefix(&path)
+                .expect("DirEntry should have the source directory as a prefix")
+                .to_string_lossy()
+                .to_string();
+
+            paths.push(path);
+        }
+
+        paths.sort();
+        let paths = paths
+            .into_iter()
+            .map(|value| MalVal::Str(value).with_loc(loc.clone()))
+            .collect();
+
+        Ok(MalVal::Vector(paths).with_loc(loc))
     }
 
     fn take_dir_context<'ctx>(
