@@ -242,6 +242,16 @@ pub enum HtmlText {
     Value(Rc<MalData>),
 }
 
+impl HtmlText {
+    pub fn text(string: String) -> Option<Self> {
+        if string.is_empty() {
+            None
+        } else {
+            Some(Self::Text(string))
+        }
+    }
+}
+
 impl fmt::Display for Html {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.has_doctype {

@@ -347,6 +347,15 @@ impl Env {
         for prop in html.properties {
             let key = MalKey::Sym(text_to_str(prop.key)?);
 
+            if let Some(value) = &prop.value {
+                if value.len() == 1 {
+                    if let HtmlText::Value(value) = &value[0] {
+                        properties.insert(key, Rc::clone(value));
+                        continue;
+                    }
+                }
+            }
+
             let value = match prop.value.map(text_to_str).transpose()? {
                 Some(value) => MalVal::Str(value).with_loc(loc.clone()),
                 None => MalVal::Nil.with_loc(loc.clone()),

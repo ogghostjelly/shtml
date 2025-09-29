@@ -135,7 +135,9 @@ where
             if let Some(value) = self.parse_escaped_value()? {
                 match value {
                     EscapedValue::Value(Some(value)) => {
-                        children.push(HtmlText::Text(std::mem::take(&mut s)));
+                        if let Some(s) = HtmlText::text(std::mem::take(&mut s)) {
+                            children.push(s);
+                        }
                         children.push(HtmlText::Value(value));
                     }
                     EscapedValue::Value(None) => {}
@@ -156,7 +158,9 @@ where
             if matches!(tag.tag_type, HtmlTagType::Close) {
                 if let Some(open) = &open {
                     if tag.tag == open.tag {
-                        children.push(HtmlText::Text(std::mem::take(&mut s)));
+                        if let Some(s) = HtmlText::text(std::mem::take(&mut s)) {
+                            children.push(s);
+                        }
                         return Ok(Html {
                             tag: Some(tag.tag),
                             properties: open.properties.clone(),
@@ -167,7 +171,9 @@ where
                 }
             }
 
-            children.push(HtmlText::Text(std::mem::take(&mut s)));
+            if let Some(s) = HtmlText::text(std::mem::take(&mut s)) {
+                children.push(s);
+            }
             let loc = self.loc();
             children.push(HtmlText::Value(
                 MalVal::Html(self.parse_html_inner(Some(tag))?).with_loc(loc),
@@ -177,7 +183,9 @@ where
         match open {
             Some(open) => Err(Error::HtmlUnclosedTag(open.tag, start_loc)),
             None => {
-                children.push(HtmlText::Text(std::mem::take(&mut s)));
+                if let Some(s) = HtmlText::text(std::mem::take(&mut s)) {
+                    children.push(s);
+                }
                 Ok(Html {
                     tag: None,
                     properties: vec![],
@@ -338,7 +346,9 @@ where
         while let Char::Char(ch) = self.peek()? {
             match self.parse_escaped_value()? {
                 Some(EscapedValue::Value(Some(value))) => {
-                    ls.push(HtmlText::Text(std::mem::take(&mut s)));
+                    if let Some(s) = HtmlText::text(std::mem::take(&mut s)) {
+                        ls.push(s);
+                    }
                     ls.push(HtmlText::Value(value));
                 }
                 Some(EscapedValue::Value(None)) => {}
@@ -350,7 +360,9 @@ where
             }
         }
 
-        ls.push(HtmlText::Text(std::mem::take(&mut s)));
+        if let Some(s) = HtmlText::text(s) {
+            ls.push(s);
+        }
 
         Ok(ls)
     }
