@@ -3,10 +3,10 @@ use std::{collections::HashMap, rc::Rc};
 use indexmap::IndexMap;
 
 use crate::{
-    list,
+    list, load,
     ns::{self, apply_map},
     reader::Location,
-    types::{CallContext, Html, HtmlProperty, HtmlText, List, MalData, MalFn, MalKey, MalVal},
+    types::{CallContext, Html, HtmlText, List, MalData, MalFn, MalKey, MalVal},
     Error, ErrorKind, MalRet,
 };
 
@@ -141,15 +141,11 @@ impl Env {
                 }
                 MalVal::Html(html) => {
                     let mut html = html.clone();
-                    let mut has_changed = false;
 
                     for prop in &mut html.properties {
-                        match prop {
-                            HtmlProperty::Kvp(_, Some(value)) | HtmlProperty::Key(value) => {
-                                has_changed = true;
-                                *value = self.eval(ctx, Rc::clone(value))?;
-                            }
-                            _ => {}
+                        self.eval_html_text(ctx, &mut prop.key)?;
+                        if let Some(value) = &mut prop.value {
+                            self.eval_html_text(ctx, value)?;
                         }
                     }
 
@@ -158,7 +154,6 @@ impl Env {
                             match child {
                                 HtmlText::Text(_) => {}
                                 HtmlText::Value(value) => {
-                                    has_changed = true;
                                     *value = self.eval(ctx, Rc::clone(value))?;
                                 }
                             }
@@ -168,15 +163,11 @@ impl Env {
                     if let Some(tag) = &html.tag {
                         if tag.starts_with("x@") {
                             let tag = tag.clone();
-                            return self.eval_html(ctx, (html, ast.loc.clone()), tag);
+                            return self.eval_xat_html(ctx, (html, ast.loc.clone()), tag);
                         }
                     }
 
-                    return Ok(if has_changed {
-                        MalVal::Html(html).with_loc(ast.loc.clone())
-                    } else {
-                        ast
-                    });
+                    return Ok(MalVal::Html(html).with_loc(ast.loc.clone()));
                 }
                 MalVal::Sym(sym) => return self.get(ctx, &ast.loc, sym).cloned(),
                 MalVal::Str(_)
@@ -331,7 +322,7 @@ impl Env {
         }
     }
 
-    fn eval_html(
+    fn eval_xat_html(
         &mut self,
         ctx: &CallContext,
         (html, loc): (Html, Location),
@@ -339,28 +330,26 @@ impl Env {
     ) -> MalRet {
         let mut properties = IndexMap::new();
 
-        for prop in html.properties {
-            match prop {
-                HtmlProperty::Kvp(key, value) => {
-                    let value = match value {
-                        Some(value) => value,
-                        None => MalVal::Bool(true).with_loc(loc.clone()),
-                    };
-
-                    properties.insert(MalKey::Sym(key), value);
-                }
-                HtmlProperty::Key(value) => {
-                    let Some(key) = MalKey::from_value(&value.value) else {
-                        return Err(Error::new(
-                            ErrorKind::InvalidMapKey(value.type_name()),
-                            ctx,
-                            loc,
-                        ));
-                    };
-
-                    properties.insert(key, MalVal::Bool(true).with_loc(loc.clone()));
+        fn text_to_str(texts: Vec<HtmlText>) -> Result<String, Error> {
+            let mut s = String::new();
+            for text in texts {
+                match text {
+                    HtmlText::Text(text) => s.push_str(&text),
+                    HtmlText::Value(value) => load::embed(&mut s, &value).expect("TODO"),
                 }
             }
+            Ok(s)
+        }
+
+        for prop in html.properties {
+            let key = MalKey::Sym(text_to_str(prop.key)?);
+
+            let value = match prop.value.map(text_to_str).transpose()? {
+                Some(value) => MalVal::Str(value).with_loc(loc.clone()),
+                None => MalVal::Nil.with_loc(loc.clone()),
+            };
+
+            properties.insert(key, value);
         }
 
         let children = if let Some(children) = html.children {
@@ -389,6 +378,20 @@ impl Env {
             )
             .with_loc(loc),
         )
+    }
+
+    fn eval_html_text(
+        &mut self,
+        ctx: &CallContext,
+        texts: &mut Vec<HtmlText>,
+    ) -> Result<(), Error> {
+        for text in &mut *texts {
+            match text {
+                HtmlText::Text(_) => {}
+                HtmlText::Value(value) => *value = self.eval(ctx, Rc::clone(value))?,
+            }
+        }
+        Ok(())
     }
 }
 

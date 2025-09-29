@@ -3,7 +3,7 @@ use std::{fmt, fs, io, path::PathBuf, rc::Rc};
 use crate::{
     env::Env,
     reader::{self, Location},
-    types::{CallContext, HtmlProperty, HtmlText, List, MalData, MalVal},
+    types::{CallContext, HtmlText, List, MalData, MalVal},
 };
 
 pub fn shtml(
@@ -30,7 +30,7 @@ pub fn shtml(
     }
 }
 
-fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
+pub fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
     match &value.value {
         MalVal::Str(value) => write!(f, "{value}"),
         MalVal::Int(value) => write!(f, "{value}"),
@@ -46,13 +46,21 @@ fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
             }
             for prop in &html.properties {
                 write!(f, " ")?;
-                match prop {
-                    HtmlProperty::Kvp(key, Some(value)) => {
-                        write!(f, "{key}=")?;
-                        embed(f, value)?;
+                for key in &prop.key {
+                    match key {
+                        HtmlText::Text(text) => write!(f, "{text}")?,
+                        HtmlText::Value(value) => embed(f, &value)?,
                     }
-                    HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
-                    HtmlProperty::Key(key) => embed(f, key)?,
+                }
+                if let Some(value) = &prop.value {
+                    write!(f, "=\"")?;
+                    for key in value {
+                        match key {
+                            HtmlText::Text(text) => write!(f, "{text}")?,
+                            HtmlText::Value(value) => embed(f, &value)?,
+                        }
+                    }
+                    write!(f, "\"")?;
                 }
             }
             if let Some(children) = &html.children {

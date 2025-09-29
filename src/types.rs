@@ -231,9 +231,9 @@ pub struct Html {
 }
 
 #[derive(Debug, Clone)]
-pub enum HtmlProperty {
-    Kvp(String, Option<Rc<MalData>>),
-    Key(Rc<MalData>),
+pub struct HtmlProperty {
+    pub key: Vec<HtmlText>,
+    pub value: Option<Vec<HtmlText>>,
 }
 
 #[derive(Debug, Clone)]
@@ -252,10 +252,20 @@ impl fmt::Display for Html {
         }
         for prop in &self.properties {
             write!(f, " ")?;
-            match prop {
-                HtmlProperty::Kvp(key, Some(value)) => write!(f, "{key}=\"@{}\"", value.value)?,
-                HtmlProperty::Kvp(key, None) => write!(f, "{key}")?,
-                HtmlProperty::Key(key) => write!(f, "@{}", key.value)?,
+            for key in &prop.key {
+                match key {
+                    HtmlText::Text(text) => write!(f, "{text}")?,
+                    HtmlText::Value(value) => write!(f, "@{}", value.value)?,
+                }
+            }
+            if let Some(value) = &prop.value {
+                write!(f, "=")?;
+                for value in value {
+                    match value {
+                        HtmlText::Text(text) => write!(f, "{text}")?,
+                        HtmlText::Value(value) => write!(f, "@{}", value.value)?,
+                    }
+                }
             }
         }
         if let Some(children) = &self.children {

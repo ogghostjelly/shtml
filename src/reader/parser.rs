@@ -193,29 +193,8 @@ where
             !ch.is_whitespace() && ch != '>' && ch != '/'
         }
 
-        fn is_valid_prop_char(ch: char) -> bool {
+        fn is_valid_key_char(ch: char) -> bool {
             is_valid_tag_char(ch) && ch != '='
-        }
-
-        fn is_void_tag(tag: &str) -> bool {
-            matches!(
-                tag,
-                "area"
-                    | "base"
-                    | "br"
-                    | "col"
-                    | "embed"
-                    | "hr"
-                    | "img"
-                    | "input"
-                    | "keygen"
-                    | "link"
-                    | "meta"
-                    | "param"
-                    | "source"
-                    | "track"
-                    | "wbr"
-            )
         }
 
         fn to_html_tag(
@@ -261,9 +240,10 @@ where
         };
 
         // Take opening '<'
-        let Char::Char('<') = self.pop()? else {
+        let Char::Char(ch @ '<') = self.peek()? else {
             return Ok(None);
         };
+        self.next(ch);
 
         // Check if it is a closing tag
         let close = self.pop_if(|ch| matches!(ch, Char::Char('/')))?;
@@ -276,7 +256,24 @@ where
             return Ok(None);
         };
 
-        let void = is_void_tag(&tag);
+        let void = matches!(
+            tag.as_str(),
+            "area"
+                | "base"
+                | "br"
+                | "col"
+                | "embed"
+                | "hr"
+                | "img"
+                | "input"
+                | "keygen"
+                | "link"
+                | "meta"
+                | "param"
+                | "source"
+                | "track"
+                | "wbr"
+        );
 
         // Take tag properties.
         let mut properties = vec![];
@@ -287,53 +284,36 @@ where
                 return Ok(Some(to_html_tag(tag, properties, has_doctype, close, void)));
             }
 
-            let key = match self.parse_escaped_value()? {
-                Some(EscapedValue::Value(Some(value))) => {
-                    properties.push(HtmlProperty::Key(value));
-                    continue;
-                }
-                Some(EscapedValue::Value(None)) => continue,
-                Some(EscapedValue::Escaped) => {
-                    let mut key = self
-                        .take_while(is_valid_prop_char)?
-                        .ok_or(Error::Expected('>'))?;
-                    key.insert(0, '@');
-                    key
-                }
-                None => self
-                    .take_while(is_valid_prop_char)?
-                    .ok_or(Error::Expected('>'))?,
+            let Some(key) = self.take_while(is_valid_key_char)? else {
+                return Err(Error::Expected('>'));
             };
 
+            let mut key = Reader::from_chars(key.chars(), self.loc());
+            let key = key.parse_escaped_text()?;
+
+            self.skip_any_whitespace()?;
+            let Char::Char(ch @ '=') = self.peek()? else {
+                properties.push(HtmlProperty { key, value: None });
+                continue;
+            };
+            self.next(ch);
             self.skip_any_whitespace()?;
 
-            if let Char::Char(ch @ '=') = self.peek()? {
-                self.next(ch);
-                self.skip_any_whitespace()?;
+            let value = match self.parse_string()? {
+                Some(value) => Some(value),
+                None => self.take_while(is_valid_tag_char)?,
+            };
 
-                let value = match self.parse_string()? {
-                    Some(value) => value,
-                    None => self
-                        .take_while(|ch| !ch.is_whitespace() && ch != '>')?
-                        .unwrap_or("".to_string()),
-                };
+            let value = match value {
+                Some(value) => {
+                    let mut value = Reader::from_chars(value.chars(), self.loc());
+                    let value = value.parse_escaped_text()?;
+                    Some(value)
+                }
+                None => None,
+            };
 
-                let mut r = Reader::from_chars(value.chars(), self.loc());
-
-                let value = match r.parse_escaped_value()? {
-                    Some(EscapedValue::Value(value)) => value,
-                    Some(EscapedValue::Escaped) => {
-                        let mut value = value;
-                        value.remove(0);
-                        Some(MalVal::Str(value).with_loc(self.loc()))
-                    }
-                    None => Some(MalVal::Str(value).with_loc(self.loc())),
-                };
-
-                properties.push(HtmlProperty::Kvp(key, value));
-            } else {
-                properties.push(HtmlProperty::Kvp(key, None));
-            }
+            properties.push(HtmlProperty { key, value });
         }
     }
 
@@ -346,6 +326,30 @@ where
         };
 
         Ok(None)
+    }
+
+    fn parse_escaped_text(&mut self) -> Result<Vec<HtmlText>> {
+        let mut ls = vec![];
+        let mut s = String::new();
+
+        while let Char::Char(ch) = self.peek()? {
+            match self.parse_escaped_value()? {
+                Some(EscapedValue::Value(Some(value))) => {
+                    ls.push(HtmlText::Text(std::mem::take(&mut s)));
+                    ls.push(HtmlText::Value(value));
+                }
+                Some(EscapedValue::Value(None)) => {}
+                Some(EscapedValue::Escaped) => s.push('@'),
+                None => {
+                    self.next(ch);
+                    s.push(ch);
+                }
+            }
+        }
+
+        ls.push(HtmlText::Text(std::mem::take(&mut s)));
+
+        Ok(ls)
     }
 
     fn parse_escaped_value(&mut self) -> Result<Option<EscapedValue>> {
@@ -439,9 +443,10 @@ where
     }
 
     fn parse_string(&mut self) -> Result<Option<String>> {
-        let Char::Char('"') = self.pop()? else {
+        let Char::Char(ch @ '"') = self.peek()? else {
             return Ok(None);
         };
+        self.next(ch);
 
         let mut s = String::new();
 
@@ -515,9 +520,10 @@ where
     }
 
     fn parse_comment(&mut self) -> Result<Option<()>> {
-        let Char::Char(';') = self.pop()? else {
+        let Char::Char(ch @ ';') = self.peek()? else {
             return Ok(None);
         };
+        self.next(ch);
 
         self.scan(|ch| match ch {
             Char::Char('\n') | Char::Eof => Ok(Action::InHalt),
