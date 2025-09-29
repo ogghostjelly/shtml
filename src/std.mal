@@ -63,8 +63,22 @@
     [& xs]
     `(do (~@xs) nil))
 
-(defn! map
+(defn! fold
     [xs f]
     (if (= (len xs) 0)
         '()
-        (cons (f (fst xs)) (map (rest xs) f))))
+        (f (fold (rest xs) f) (fst xs))))
+
+(defn! filter
+    [xs f]
+    (fold xs (fn*
+        [rest fst]
+        (if (f fst)
+            (cons fst rest)
+            rest))))
+
+(defn! map
+    [xs f]
+    (fold xs (fn*
+        [rest fst]
+        (cons (f fst) rest))))

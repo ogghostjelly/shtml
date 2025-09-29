@@ -395,13 +395,11 @@ where
 
         let Some(()) = self.parse_list_like(('{', '}'), |value| {
             let Some(key) = key.take() else {
-                return {
-                    let _: () = key = Some(match MalKey::from_value(&value.value) {
-                        Some(key) => key,
-                        None => return Err(Error::InvalidMapKey(value.type_name())),
-                    });
-                    Ok(())
-                };
+                let _: () = key = Some(match MalKey::from_value(&value.value) {
+                    Some(key) => key,
+                    None => return Err(Error::InvalidMapKey(value.type_name())),
+                });
+                return Ok(());
             };
 
             match map.insert(key.clone(), value) {

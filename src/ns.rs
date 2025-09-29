@@ -451,6 +451,7 @@ mod fmt {
 
 pub fn cmp(data: &mut Env) {
     data.set_fn(loc!(), "=", cmp::eq);
+    data.set_fn(loc!(), "!=", cmp::neq);
     data.set_fn(loc!(), "lt", cmp::lt);
     data.set_fn(loc!(), "lt=", cmp::lte);
     data.set_fn(loc!(), "gt", cmp::gt);
@@ -462,6 +463,8 @@ pub fn cmp(data: &mut Env) {
 
     data.set_fn(loc!(), "list?", cmp::is_list);
     data.set_fn(loc!(), "empty?", cmp::is_empty);
+    data.set_fn(loc!(), "even?", cmp::is_even);
+    data.set_fn(loc!(), "odd?", cmp::is_odd);
 }
 
 mod cmp {
@@ -478,6 +481,10 @@ mod cmp {
 
     pub fn eq(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
         all_reduce(loc, args, eq2)
+    }
+
+    pub fn neq(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        all_reduce(loc, args, |a, b| Ok(!eq2(a, b)?))
     }
 
     pub fn not(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
@@ -617,12 +624,30 @@ mod cmp {
                 MalVal::Vector(vec) => vec.is_empty(),
                 MalVal::Map(map) => map.is_empty(),
                 _ => {
-                    return {
-                        let kind = ErrorKind::InvalidOperation1("empty?", value.type_name());
-                        Err(Error::new(kind, ctx, value.loc.clone()))
-                    }
+                    let kind = ErrorKind::InvalidOperation1("empty?", value.type_name());
+                    return Err(Error::new(kind, ctx, value.loc.clone()));
                 }
             })
+        })
+    }
+
+    pub fn is_even(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        all(loc, args, |value| match &value.value {
+            MalVal::Int(x) => Ok(x % 2 == 0),
+            _ => {
+                let kind = ErrorKind::InvalidOperation1("is_even?", value.type_name());
+                Err(Error::new(kind, ctx, value.loc.clone()))
+            }
+        })
+    }
+
+    pub fn is_odd(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        all(loc, args, |value| match &value.value {
+            MalVal::Int(x) => Ok(x % 2 == 1),
+            _ => {
+                let kind = ErrorKind::InvalidOperation1("is_even?", value.type_name());
+                Err(Error::new(kind, ctx, value.loc.clone()))
+            }
         })
     }
 }
@@ -890,6 +915,8 @@ mod ds {
 pub fn string(data: &mut Env) {
     data.set_fn(loc!(), "string/rsplit", string::rsplit_once);
     data.set_fn(loc!(), "string/split", string::split_once);
+    data.set_fn(loc!(), "string/ends-with", string::ends_with);
+    data.set_fn(loc!(), "string/starts-with", string::starts_with);
 }
 
 mod string {
@@ -923,6 +950,20 @@ mod string {
 
     make_split_once!(rsplit_once);
     make_split_once!(split_once);
+
+    pub fn ends_with(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [value, pat] = take_exact(ctx, &loc, args)?;
+        let value = to_str(ctx, &value)?;
+        let pat = to_str(ctx, &pat)?;
+        Ok(MalVal::Bool(value.ends_with(pat)).with_loc(loc))
+    }
+
+    pub fn starts_with(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let [value, pat] = take_exact(ctx, &loc, args)?;
+        let value = to_str(ctx, &value)?;
+        let pat = to_str(ctx, &pat)?;
+        Ok(MalVal::Bool(value.starts_with(pat)).with_loc(loc))
+    }
 }
 
 pub fn math(data: &mut Env) {
@@ -1091,13 +1132,11 @@ fn to_key(ctx: &CallContext, value: Rc<MalData>) -> Result<MalKey, Error> {
 
 fn to_str<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, Error> {
     let MalVal::Str(key) = &value.value else {
-        return {
-            Err(Error::new(
-                ErrorKind::UnexpectedType(MalVal::STR, value.type_name()),
-                ctx,
-                value.loc.clone(),
-            ))
-        };
+        return Err(Error::new(
+            ErrorKind::UnexpectedType(MalVal::STR, value.type_name()),
+            ctx,
+            value.loc.clone(),
+        ));
     };
 
     Ok(key)
@@ -1105,13 +1144,11 @@ fn to_str<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, E
 
 fn to_sym<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, Error> {
     let MalVal::Sym(key) = &value.value else {
-        return {
-            Err(Error::new(
-                ErrorKind::UnexpectedType(MalVal::SYM, value.type_name()),
-                ctx,
-                value.loc.clone(),
-            ))
-        };
+        return Err(Error::new(
+            ErrorKind::UnexpectedType(MalVal::SYM, value.type_name()),
+            ctx,
+            value.loc.clone(),
+        ));
     };
 
     Ok(key)
