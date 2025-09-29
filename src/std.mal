@@ -30,6 +30,8 @@
     (def! params (map/take params 'src))
     (include (fst params) (snd params)))
 
+(defn! import-file [path] (load-mal (new-env) path))
+
 (defmacro! import!
     [path & args]
 
@@ -52,7 +54,7 @@
         true (throw "bad arguments")))
     
     ; Read and evaluate the file in a new environment
-    (def! value (load-mal (new-env) path))
+    (def! value (import-file path))
 
     ; Set name to the evaluated value
     `(def! ~(sym name) ~value))
@@ -60,3 +62,9 @@
 (defmacro! #
     [& xs]
     `(do (~@xs) nil))
+
+(defn! map
+    [xs f]
+    (if (= (len xs) 0)
+        '()
+        (cons (f (fst xs)) (map (rest xs) f))))

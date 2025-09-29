@@ -80,6 +80,6 @@ pub enum ErrorKind {
     Parse(String),
     #[error("{0}")]
     Io(io::Error),
-    #[error("cannot embed '{0}'")]
-    CannotEmbed(&'static str),
+    #[error("cannot embed '{}': {}", _0.type_name(), _0.value)]
+    CannotEmbed(Rc<MalData>),
 }

@@ -231,8 +231,8 @@ impl Env {
                 bind_rest,
                 body,
             }) => {
-                let name = name.clone().unwrap_or_else(|| "lambda".to_string());
-                let ctx = &ctx.new_frame((name.clone(), loc.clone()));
+                let dbg_name = name.clone().unwrap_or_else(|| "lambda".to_string());
+                let ctx = &ctx.new_frame((dbg_name.clone(), loc.clone()));
 
                 let bind_rest = match &bind_rest {
                     Some(bind) => bind.as_ref(),
@@ -248,7 +248,10 @@ impl Env {
                     }
                 };
 
-                let mut env = Env::inner(name, outer);
+                let mut env = Env::inner(dbg_name, outer);
+                if let Some(name) = &name {
+                    env.set(name, Rc::clone(&op));
+                }
                 let bindings = binds.iter();
                 let mut vals = vals.iter().cloned();
 

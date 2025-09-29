@@ -301,7 +301,10 @@ where
 
             let value = match self.parse_string()? {
                 Some(value) => Some(value),
-                None => self.take_while(is_valid_tag_char)?,
+                None => match self.parse_string_inner('\'', '\'')? {
+                    Some(value) => Some(value),
+                    None => self.take_while(is_valid_tag_char)?,
+                },
             };
 
             let value = match value {
@@ -442,11 +445,17 @@ where
         }
     }
 
-    fn parse_string(&mut self) -> Result<Option<String>> {
-        let Char::Char(ch @ '"') = self.peek()? else {
-            return Ok(None);
-        };
-        self.next(ch);
+    pub fn parse_string(&mut self) -> Result<Option<String>> {
+        self.parse_string_inner('"', '"')
+    }
+
+    fn parse_string_inner(&mut self, start: char, end: char) -> Result<Option<String>> {
+        match self.peek()? {
+            Char::Char(ch) if ch == start => {
+                self.next(ch);
+            }
+            _ => return Ok(None),
+        }
 
         let mut s = String::new();
 
@@ -454,15 +463,15 @@ where
             match self.pop()? {
                 Char::Char('\\') => match self.pop()? {
                     Char::Char('\\') => s.push('\\'),
-                    Char::Char('"') => s.push('\"'),
+                    Char::Char(ch) if ch == end => s.push(end),
                     Char::Char('n') => s.push('\n'),
                     Char::Char('t') => s.push('\t'),
                     Char::Char('r') => s.push('\r'),
                     _ => return Err(Error::InvalidEscapeSequence),
                 },
-                Char::Char('"') => return Ok(Some(s)),
+                Char::Char(ch) if ch == end => return Ok(Some(s)),
                 Char::Char(ch) => s.push(ch),
-                Char::Eof => return Err(Error::Expected('"')),
+                Char::Eof => return Err(Error::Expected(end)),
             }
         }
     }

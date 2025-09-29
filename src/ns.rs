@@ -294,11 +294,10 @@ mod fs {
                 load::Error::Io(e) => Err(Error::new(ErrorKind::Io(e), ctx, loc.clone())),
                 load::Error::Parse(e) => Err(Error::new(ErrorKind::Parse(e), ctx, loc.clone())),
                 load::Error::SHtml(e) => Err(e),
-                load::Error::CannotEmbed(data) => Err(Error::new(
-                    ErrorKind::CannotEmbed(data.type_name()),
-                    ctx,
-                    data.loc.clone(),
-                )),
+                load::Error::CannotEmbed(data) => {
+                    let loc = data.loc.clone();
+                    Err(Error::new(ErrorKind::CannotEmbed(data), ctx, loc))
+                }
                 load::Error::Fmt(_) => unreachable!("fmt is infallible"),
             },
         }
@@ -383,18 +382,20 @@ mod fmt {
     }
 
     pub fn prin(_ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        for value in args.iter() {
+        let mut iter = args.iter();
+        if let Some(value) = iter.next() {
             print!("{}", PrettyPrint(&value.value));
+        }
+        for value in iter {
+            print!(" {}", PrettyPrint(&value.value));
         }
         Ok(MalVal::Nil.with_loc(loc))
     }
 
-    pub fn print(_ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        for value in args.iter() {
-            print!("{}", PrettyPrint(&value.value));
-        }
+    pub fn print(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let value = prin(ctx, (args, loc))?;
         println!();
-        Ok(MalVal::Nil.with_loc(loc))
+        Ok(value)
     }
 
     pub fn dbg(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {

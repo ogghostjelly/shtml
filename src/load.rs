@@ -32,6 +32,18 @@ pub fn shtml(
 
 pub fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
     match &value.value {
+        MalVal::List(ls) => {
+            for value in ls.iter() {
+                embed(f, value)?;
+            }
+            Ok(())
+        }
+        MalVal::Vector(ls) => {
+            for value in ls {
+                embed(f, value)?;
+            }
+            Ok(())
+        }
         MalVal::Str(value) => write!(f, "{value}"),
         MalVal::Int(value) => write!(f, "{value}"),
         MalVal::Float(value) => write!(f, "{value}"),
@@ -126,6 +138,6 @@ pub enum Error {
     Parse(String),
     #[error("load shtml: {0}")]
     SHtml(crate::Error),
-    #[error("load shtml: cannot embed: '{}'", _0.type_name())]
+    #[error("load shtml: cannot embed: '{}': {}", _0.type_name(), _0.value)]
     CannotEmbed(Rc<MalData>),
 }
