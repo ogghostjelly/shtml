@@ -294,7 +294,7 @@ mod fs {
             Err(e) => match e {
                 load::Error::Io(_, e) => Err(Error::new(ErrorKind::Io(e), ctx, loc.clone())),
                 load::Error::Parse(e) => Err(Error::new(ErrorKind::Parse(e), ctx, loc.clone())),
-                load::Error::Shtml(_, e) => Err(e),
+                load::Error::Shtml(_, e) => Err(*e),
                 load::Error::CannotEmbed(data) => {
                     let loc = data.loc.clone();
                     Err(Error::new(ErrorKind::CannotEmbed(data), ctx, loc))

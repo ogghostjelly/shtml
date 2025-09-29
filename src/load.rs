@@ -26,7 +26,7 @@ pub fn shtml(
             embed(
                 &mut value,
                 &env.eval(&ctx, ast)
-                    .map_err(|e| Error::Shtml(rel_path.to_string(), e))?,
+                    .map_err(|e| Error::Shtml(rel_path.to_string(), Box::new(e)))?,
             )?;
             Ok(value)
         }
@@ -65,7 +65,7 @@ pub fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> 
                 for key in &prop.key {
                     match key {
                         HtmlText::Text(text) => write!(f, "{text}")?,
-                        HtmlText::Value(value) => embed(f, &value)?,
+                        HtmlText::Value(value) => embed(f, value)?,
                     }
                 }
                 if let Some(value) = &prop.value {
@@ -73,7 +73,7 @@ pub fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> 
                     for key in value {
                         match key {
                             HtmlText::Text(text) => write!(f, "{text}")?,
-                            HtmlText::Value(value) => embed(f, &value)?,
+                            HtmlText::Value(value) => embed(f, value)?,
                         }
                     }
                     write!(f, "\"")?;
@@ -124,7 +124,7 @@ pub fn mal(
             let ctx = ctx.inner(rel_path);
             let ret = env
                 .eval(&ctx, MalVal::List(vals).with_loc(file_loc))
-                .map_err(|e| Error::Shtml(rel_path.to_string(), e))?;
+                .map_err(|e| Error::Shtml(rel_path.to_string(), Box::new(e)))?;
 
             Ok(ret)
         }
@@ -141,7 +141,7 @@ pub enum Error {
     #[error("load shtml: couldn't parse {0}")]
     Parse(String),
     #[error("load shtml in {0:?}: {1}")]
-    Shtml(String, crate::Error),
+    Shtml(String, Box<crate::Error>),
     #[error("load shtml: cannot embed: '{}': {}", _0.type_name(), _0.value)]
     CannotEmbed(Rc<MalData>),
 }
