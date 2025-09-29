@@ -14,7 +14,7 @@ pub fn shtml(
 ) -> Result<String, Error> {
     let input = match fs::File::open(&abs_path) {
         Ok(input) => input,
-        Err(e) => return Err(Error::Io(e)),
+        Err(e) => return Err(Error::Io(rel_path.to_string(), e)),
     };
 
     let file_loc = Location::file(rel_path);
@@ -23,7 +23,11 @@ pub fn shtml(
         Ok(ast) => {
             let ctx = ctx.inner(rel_path);
             let mut value = String::new();
-            embed(&mut value, &env.eval(&ctx, ast).map_err(Error::SHtml)?)?;
+            embed(
+                &mut value,
+                &env.eval(&ctx, ast)
+                    .map_err(|e| Error::Shtml(rel_path.to_string(), e))?,
+            )?;
             Ok(value)
         }
         Err(e) => Err(Error::Parse(e.to_string())),
@@ -107,7 +111,7 @@ pub fn mal(
 ) -> Result<Rc<MalData>, Error> {
     let input = match fs::File::open(&abs_path) {
         Ok(input) => input,
-        Err(e) => return Err(Error::Io(e)),
+        Err(e) => return Err(Error::Io(rel_path.to_string(), e)),
     };
 
     let file_loc = Location::file(rel_path);
@@ -120,7 +124,7 @@ pub fn mal(
             let ctx = ctx.inner(rel_path);
             let ret = env
                 .eval(&ctx, MalVal::List(vals).with_loc(file_loc))
-                .map_err(Error::SHtml)?;
+                .map_err(|e| Error::Shtml(rel_path.to_string(), e))?;
 
             Ok(ret)
         }
@@ -130,14 +134,14 @@ pub fn mal(
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("load shtml: io: {0}")]
-    Io(io::Error),
+    #[error("load shtml in {0:?}: io: {1}")]
+    Io(String, io::Error),
     #[error("load shtml: fmt: {0}")]
     Fmt(#[from] fmt::Error),
     #[error("load shtml: couldn't parse {0}")]
     Parse(String),
-    #[error("load shtml: {0}")]
-    SHtml(crate::Error),
+    #[error("load shtml in {0:?}: {1}")]
+    Shtml(String, crate::Error),
     #[error("load shtml: cannot embed: '{}': {}", _0.type_name(), _0.value)]
     CannotEmbed(Rc<MalData>),
 }
