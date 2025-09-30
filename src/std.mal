@@ -82,3 +82,25 @@
     (fold xs (fn*
         [rest fst]
         (cons (f fst) rest))))
+
+(defn! join
+    [xs sep]
+    (if (= (len xs) 1)
+        (str (fst xs))
+        (+ (str (fst xs)) sep (join (rest xs) sep))))
+
+(defn! range
+    [from to]
+    (if (= from to)
+        '()
+        (cons from (range
+            (if (gt to from)
+                (+ from 1)
+                (- from 1))
+            to))))
+
+(defn! accum
+    [f xs]
+    (if (= (len xs) 1)
+        (fst xs)
+        (+ (fst xs) (accum f (rest xs)))))

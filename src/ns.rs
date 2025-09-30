@@ -635,7 +635,7 @@ mod cmp {
         all(loc, args, |value| match &value.value {
             MalVal::Int(x) => Ok(x % 2 == 0),
             _ => {
-                let kind = ErrorKind::InvalidOperation1("is_even?", value.type_name());
+                let kind = ErrorKind::InvalidOperation1("even?", value.type_name());
                 Err(Error::new(kind, ctx, value.loc.clone()))
             }
         })
@@ -645,7 +645,7 @@ mod cmp {
         all(loc, args, |value| match &value.value {
             MalVal::Int(x) => Ok(x % 2 == 1),
             _ => {
-                let kind = ErrorKind::InvalidOperation1("is_even?", value.type_name());
+                let kind = ErrorKind::InvalidOperation1("odd?", value.type_name());
                 Err(Error::new(kind, ctx, value.loc.clone()))
             }
         })
@@ -902,7 +902,7 @@ mod ds {
             MalVal::Map(map) => map.len(),
             _ => {
                 return Err(Error::new(
-                    ErrorKind::InvalidOperation1("count", value.type_name()),
+                    ErrorKind::InvalidOperation1("len", value.type_name()),
                     ctx,
                     loc,
                 ))
@@ -913,6 +913,7 @@ mod ds {
 }
 
 pub fn string(data: &mut Env) {
+    data.set_fn(loc!(), "str", string::str);
     data.set_fn(loc!(), "string/rsplit", string::rsplit_once);
     data.set_fn(loc!(), "string/split", string::split_once);
     data.set_fn(loc!(), "string/ends-with", string::ends_with);
@@ -920,14 +921,41 @@ pub fn string(data: &mut Env) {
 }
 
 mod string {
+    use std::fmt::Write;
+
     use crate::{
         list,
         reader::Location,
         types::{CallContext, List, MalVal},
-        MalRet,
+        Error, ErrorKind, MalRet,
     };
 
     use super::{take_exact, to_str};
+
+    pub fn str(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        let mut s = String::new();
+
+        for value in args {
+            match &value.value {
+                MalVal::Sym(value) => write!(s, "{value}"),
+                MalVal::Str(value) => write!(s, "{value}"),
+                MalVal::Int(value) => write!(s, "{value}"),
+                MalVal::Float(value) => write!(s, "{value}"),
+                MalVal::Bool(value) => write!(s, "{value}"),
+                MalVal::Html(html) => write!(s, "{html}"),
+                _ => {
+                    return Err(Error::new(
+                        ErrorKind::InvalidOperation1("str", value.type_name()),
+                        ctx,
+                        loc,
+                    ))
+                }
+            }
+            .expect("write! fmt is infallible")
+        }
+
+        Ok(MalVal::Str(s).with_loc(loc))
+    }
 
     macro_rules! make_split_once {
         ( $name:ident ) => {

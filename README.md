@@ -43,7 +43,7 @@ Using more complex functions:
 <main>
     @(do
         (def! r (range 0 10))
-        (str (join r "+") "=" (sum r)))
+        (str (join r " + ") " = " (accum + r)))
 </main>
 
 --- vvv ---
