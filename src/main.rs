@@ -26,7 +26,7 @@ fn main() {
         .commands
         .unwrap_or(Commands::Watch(ProjectPath::default()))
     {
-        Commands::Repl => repl(),
+        Commands::Repl => convert_error(repl()),
         Commands::Build(path) => build(path),
         Commands::Watch(path) => convert_error(watch(path)),
     };
@@ -37,8 +37,9 @@ fn main() {
     }
 }
 
-fn repl() -> Result<(), Box<dyn std::error::Error>> {
-    let mut rl = Editor::<(), rustyline::history::DefaultHistory>::new()?;
+fn repl() -> Result<(), Error> {
+    let mut rl =
+        Editor::<(), rustyline::history::DefaultHistory>::new().map_err(Error::Readline)?;
     if rl.load_history(".mal-history").is_err() {
         eprintln!("No previous history.");
     }
@@ -46,7 +47,7 @@ fn repl() -> Result<(), Box<dyn std::error::Error>> {
     let mut env = Env::std();
 
     let loc = Location::new(Rc::new("repl".into()), 1, 1);
-    let src = CallContext::repl(current_dir()?);
+    let src = CallContext::repl(current_dir().map_err(Error::GetPwd)?);
 
     loop {
         match rl.readline("user> ") {
@@ -152,10 +153,27 @@ fn build(path: ProjectPath) -> Result<(), Box<dyn std::error::Error>> {
     match build_inner(Rc::clone(&path)) {
         Ok(()) => Ok(()),
         Err(e) => {
-            _ = fs::remove_dir_all(path.join("_site"));
+            _ = remove_dir_children(path.join("_site"));
             Err(e.into())
         }
     }
+}
+
+fn remove_dir_children(path: PathBuf) -> io::Result<()> {
+    let entries = fs::read_dir(path)?;
+
+    for entry in entries {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+
+        if ty.is_dir() {
+            fs::remove_dir_all(entry.path())?;
+        } else if ty.is_file() || ty.is_symlink() {
+            fs::remove_file(entry.path())?;
+        }
+    }
+
+    Ok(())
 }
 
 fn build_inner(path: Rc<PathBuf>) -> Result<(), Error> {
@@ -298,4 +316,6 @@ pub enum Error {
     CopySiteFile(String, io::Error),
     #[error("shtml watch: notify: {0}")]
     Notify(#[from] notify::Error),
+    #[error("couldn't readline")]
+    Readline(ReadlineError),
 }
