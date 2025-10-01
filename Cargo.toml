@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 description = "HTML at Compile-time. A lisp-like HTML templating language."
-repository = "https://github.com/OgGhostJelly/mal"
+repository = "https://github.com/OgGhostJelly/shtml"
 keywords = ["cli", "web", "html", "tool", "template"]
 categories = ["command-line-utilities", "template-engine"]
 
