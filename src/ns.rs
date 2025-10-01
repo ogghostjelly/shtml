@@ -463,6 +463,11 @@ pub fn cmp(data: &mut Env) {
 
     data.set_fn(loc!(), "list?", cmp::is_list);
     data.set_fn(loc!(), "empty?", cmp::is_empty);
+    data.set_fn(loc!(), "string?", cmp::is_string);
+    data.set_fn(loc!(), "vec?", cmp::is_vec);
+    data.set_fn(loc!(), "hash-map?", cmp::is_hash_map);
+    data.set_fn(loc!(), "sym?", cmp::is_sym);
+    data.set_fn(loc!(), "fn?", cmp::is_fn);
     data.set_fn(loc!(), "even?", cmp::is_even);
     data.set_fn(loc!(), "odd?", cmp::is_odd);
 }
@@ -628,6 +633,33 @@ mod cmp {
                     return Err(Error::new(kind, ctx, value.loc.clone()));
                 }
             })
+        })
+    }
+
+    pub fn is_string(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        all(loc, args, |value| Ok(matches!(value.value, MalVal::Str(_))))
+    }
+
+    pub fn is_vec(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        all(loc, args, |value| {
+            Ok(matches!(value.value, MalVal::Vector(_)))
+        })
+    }
+
+    pub fn is_hash_map(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        all(loc, args, |value| Ok(matches!(value.value, MalVal::Map(_))))
+    }
+
+    pub fn is_sym(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        all(loc, args, |value| Ok(matches!(value.value, MalVal::Sym(_))))
+    }
+
+    pub fn is_fn(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
+        all(loc, args, |value| {
+            Ok(matches!(
+                value.value,
+                MalVal::Fn(_) | MalVal::BuiltinFn(_, _) | MalVal::Special(_, _)
+            ))
         })
     }
 
@@ -900,6 +932,7 @@ mod ds {
             MalVal::List(list) => list.len(),
             MalVal::Vector(vec) => vec.len(),
             MalVal::Map(map) => map.len(),
+            MalVal::Str(s) => s.len(),
             _ => {
                 return Err(Error::new(
                     ErrorKind::InvalidOperation1("len", value.type_name()),

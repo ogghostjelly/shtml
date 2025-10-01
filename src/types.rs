@@ -269,13 +269,14 @@ impl fmt::Display for Html {
                 }
             }
             if let Some(value) = &prop.value {
-                write!(f, "=")?;
+                write!(f, "=\"")?;
                 for value in value {
                     match value {
                         HtmlText::Text(text) => write!(f, "{text}")?,
                         HtmlText::Value(value) => write!(f, "@{}", value.value)?,
                     }
                 }
+                write!(f, "\"")?;
             }
         }
         if let Some(children) = &self.children {
