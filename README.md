@@ -3,7 +3,9 @@
 HTML at Compile-time
 
 > [!NOTE]
-> This project is still in active (albeit slow) development, so expect breaking changes.
+> This project is still in active (albeit slow) development so expect breaking changes.
+> The documentation isn't great either but it's something I'll be working on.
+> In the meantime feel free to contribute!
 
 A lisp-like HTML templating language built off of [mal](https://github.com/kanaka/mal).
 This is not suited for major production settings.
@@ -14,18 +16,20 @@ Clone and run it:
 ```bash
 git clone https://github.com/OgGhostJelly/shtml.git
 cd shtml
-cargo run -- build site/ # Build the example site
+cargo run -- help         # Display help text
+#cargo run -- build site/ # Build the example site
+#cargo run -- repl        # Start the repl
 ```
 
 # Examples
 
-Numbers, comments and ignoring:
+## Numbers, comments and ignoring
 ```html
 <main>
-    @(; this is a comment)
+    @; this is a comment
     @(+ 1 2)
     
-    @(; '#' ignores the value)
+    @; '#' ignores the value
     @(# + 5 6)
 </main>
 
@@ -38,7 +42,7 @@ Numbers, comments and ignoring:
 </main>
 ```
 
-Using more complex functions:
+## Using more complex functions
 ```html
 <main>
     @(do
@@ -53,25 +57,58 @@ Using more complex functions:
 </main>
 ```
 
-Including files and compiling to JS:
-> [!WARNING]
-> This is not yet implemented, there are older versions of shtml that do implement this but they are very buggy and janky!
+## Including files
 ```html
 [index.html]
 <main>
-    @(include "#template.html" [name "World" mood "Good"])
+    @(include "#template.html" [greeting "Hello"])
 </main>
 
 [#template.html]
-@(; This will get compiled to JS)
-@(script (alert ~name))
+<p>@greeting from @file</p>
 
-<p>Hello @name feeling @mood today?</p>
+--- vvv ---
+
+<main>
+    <p>Hello from #template.html</p>
+</main>
+```
+
+## Custom tags
+```html
+<main>
+    @(defn! x@say
+        [attrs children]
+        ; get the name of the person from attributes
+        (def! name (attrs 'name))
+
+        ; join the list of html elements into a string
+        (def! children (join children " "))
+
+        (str "\"" children  "\"" " said " name))
+
+    <x@say name="Bob">What's up</x@say>
+</main>
+
+--- vvv ---
+
+<main>
+    "What's up" said Bob
+</main>
+```
+
+## Compiling to JS
+> [!IMPORTANT]
+> This is not yet implemented, there are older versions of shtml that do implement this but they are very buggy and janky!
+```html
+<main>
+    @(def! greeting "Hello, World!")
+    @(script (alert ~greeting))
+</main>
 
 --- vvv ---
 
 <main>
     <script> alert("World") </script>
-    <p>Hello World feeling Good today?<p>
 </main>
 ```
