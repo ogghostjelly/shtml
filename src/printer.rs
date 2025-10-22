@@ -18,9 +18,11 @@ fn display(value: &MalVal, f: &mut fmt::Formatter<'_>, mut quote: bool) -> fmt::
                 write!(f, "'")?;
                 quote = true;
             };
-            join_vals(f, "(", ")", vals.iter().map(|x| &x.value), quote)
+            join_vals(f, "(", ")", vals.iter().map(|x| x.value.as_ref()), quote)
         }
-        MalVal::Vector(vals) => join_vals(f, "[", "]", vals.iter().map(|x| &x.value), quote),
+        MalVal::Vector(vals) => {
+            join_vals(f, "[", "]", vals.iter().map(|x| x.value.as_ref()), quote)
+        }
         MalVal::Map(map) => join_vals(
             f,
             "{",

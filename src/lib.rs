@@ -1,4 +1,4 @@
-use std::{fmt, io, path::PathBuf, rc::Rc};
+use std::{fmt, io, path::PathBuf};
 
 use reader::Location;
 use types::{CallContext, MalData, MalVal};
@@ -11,7 +11,7 @@ pub mod printer;
 pub mod reader;
 pub mod types;
 
-pub type MalRet = Result<Rc<MalData>, Error>;
+pub type MalRet = Result<MalData, Error>;
 
 #[derive(thiserror::Error, Debug)]
 pub struct Error {
@@ -81,5 +81,5 @@ pub enum ErrorKind {
     #[error("{0}")]
     Io(io::Error),
     #[error("cannot embed '{}': {}", _0.type_name(), _0.value)]
-    CannotEmbed(Rc<MalData>),
+    CannotEmbed(MalData),
 }

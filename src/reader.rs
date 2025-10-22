@@ -8,12 +8,12 @@ mod internal;
 mod parser;
 pub use parser::is_valid_char;
 
-pub fn parse_mal_str(loc: Location, s: &str) -> Result<Vec<Rc<MalData>>> {
+pub fn parse_mal_str(loc: Location, s: &str) -> Result<Vec<MalData>> {
     let r = internal::Reader::from_chars(s.chars(), loc);
     try_reader(r, |r| r.parse_file())
 }
 
-pub fn parse_mal_reader<R>(loc: Location, reader: R) -> Result<Vec<Rc<MalData>>>
+pub fn parse_mal_reader<R>(loc: Location, reader: R) -> Result<Vec<MalData>>
 where
     R: io::Read,
 {
@@ -21,7 +21,7 @@ where
     try_reader(r, |r| r.parse_file())
 }
 
-pub fn parse_html_reader<R>(loc: Location, reader: R) -> Result<Rc<MalData>>
+pub fn parse_html_reader<R>(loc: Location, reader: R) -> Result<MalData>
 where
     R: io::Read,
 {

@@ -1,4 +1,4 @@
-use std::{fmt, fs, io, path::PathBuf, rc::Rc};
+use std::{fmt, fs, io, path::PathBuf};
 
 use crate::{
     env::Env,
@@ -34,8 +34,8 @@ pub fn shtml(
     }
 }
 
-pub fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> {
-    match &value.value {
+pub fn embed(f: &mut impl fmt::Write, value: &MalData) -> Result<(), Error> {
+    match value.value.as_ref() {
         MalVal::List(ls) => {
             for value in ls.iter() {
                 embed(f, value)?;
@@ -98,7 +98,7 @@ pub fn embed(f: &mut impl fmt::Write, value: &Rc<MalData>) -> Result<(), Error> 
 
             Ok(())
         }
-        _ => return Err(Error::CannotEmbed(Rc::clone(value))),
+        _ => return Err(Error::CannotEmbed(value.clone())),
     }
     .map_err(Error::Fmt)
 }
@@ -108,7 +108,7 @@ pub fn mal(
     env: &mut Env,
     rel_path: &str,
     abs_path: PathBuf,
-) -> Result<Rc<MalData>, Error> {
+) -> Result<MalData, Error> {
     let input = match fs::File::open(&abs_path) {
         Ok(input) => input,
         Err(e) => return Err(Error::Io(rel_path.to_string(), e)),
@@ -143,5 +143,5 @@ pub enum Error {
     #[error("load shtml in {0:?}: {1}")]
     Shtml(String, Box<crate::Error>),
     #[error("load shtml: cannot embed: '{}': {}", _0.type_name(), _0.value)]
-    CannotEmbed(Rc<MalData>),
+    CannotEmbed(MalData),
 }

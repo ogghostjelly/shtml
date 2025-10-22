@@ -17,7 +17,7 @@ impl<I> Reader<I>
 where
     I: Iterator<Item = Result<char>>,
 {
-    pub fn parse_file(&mut self) -> Result<Vec<Rc<MalData>>> {
+    pub fn parse_file(&mut self) -> Result<Vec<MalData>> {
         let mut ast = vec![];
         loop {
             self.skip_any_whitespace()?;
@@ -30,7 +30,7 @@ where
         }
     }
 
-    fn parse_next_value(&mut self) -> Result<Rc<MalData>> {
+    fn parse_next_value(&mut self) -> Result<MalData> {
         loop {
             if let Some(value) = self.parse_value()? {
                 return Ok(value);
@@ -38,7 +38,7 @@ where
         }
     }
 
-    pub fn parse_value(&mut self) -> Result<Option<Rc<MalData>>> {
+    pub fn parse_value(&mut self) -> Result<Option<MalData>> {
         self.flush();
 
         if self.take("~@")? {
@@ -85,7 +85,7 @@ where
         self.parse_atom().map(Some)
     }
 
-    fn parse_shorthand(&mut self, name: &'static str) -> Result<Option<Rc<MalData>>> {
+    fn parse_shorthand(&mut self, name: &'static str) -> Result<Option<MalData>> {
         Ok(Some(
             list!(
                 MalVal::Sym(name.to_string()).with_loc(self.loc()),
@@ -391,7 +391,7 @@ where
             .map(|()| List::from_vec(ls)))
     }
 
-    fn parse_vector(&mut self) -> Result<Option<Vec<Rc<MalData>>>> {
+    fn parse_vector(&mut self) -> Result<Option<Vec<MalData>>> {
         let mut vec = Vec::new();
         Ok(self
             .parse_list_like(('[', ']'), |value| {
@@ -401,7 +401,7 @@ where
             .map(|()| vec))
     }
 
-    fn parse_map(&mut self) -> Result<Option<IndexMap<MalKey, Rc<MalData>>>> {
+    fn parse_map(&mut self) -> Result<Option<IndexMap<MalKey, MalData>>> {
         let mut map = IndexMap::new();
         let mut key: Option<MalKey> = None;
 
@@ -415,7 +415,7 @@ where
             };
 
             match map.insert(key.clone(), value) {
-                Some(value) => Err(Error::DuplicateMapKey(key, Box::new(value.value.clone()))),
+                Some(value) => Err(Error::DuplicateMapKey(key, Rc::clone(&value.value))),
                 None => Ok(()),
             }
         })?
@@ -432,7 +432,7 @@ where
     fn parse_list_like(
         &mut self,
         (open, close): (char, char),
-        mut f: impl FnMut(Rc<MalData>) -> Result<()>,
+        mut f: impl FnMut(MalData) -> Result<()>,
     ) -> Result<Option<()>> {
         match self.pop()? {
             Char::Char(ch) if ch == open => {}
@@ -493,7 +493,7 @@ where
         })
     }
 
-    fn parse_atom(&mut self) -> Result<Rc<MalData>> {
+    fn parse_atom(&mut self) -> Result<MalData> {
         let Some(symbol) = self.take_while(is_valid_char)? else {
             return Err(Error::InvalidChar(
                 self.take_while(|ch| !ch.is_whitespace())?
@@ -556,7 +556,7 @@ where
 }
 
 enum EscapedValue {
-    Value(Option<Rc<MalData>>),
+    Value(Option<MalData>),
     Escaped,
 }
 
@@ -608,7 +608,7 @@ pub enum Error {
     #[error("'{0}' cannot be a map key")]
     InvalidMapKey(&'static str),
     #[error("duplicate map key")]
-    DuplicateMapKey(MalKey, Box<MalVal>),
+    DuplicateMapKey(MalKey, Rc<MalVal>),
     #[error("map key without value")]
     KeyWithoutValue(MalKey),
     #[error("invalid char in {0:?}")]

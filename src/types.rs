@@ -15,15 +15,15 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct MalData {
-    pub value: MalVal,
+    pub value: Rc<MalVal>,
     pub loc: Location,
 }
 
 #[derive(Debug, Clone)]
 pub enum MalVal {
     List(List),
-    Vector(Vec<Rc<MalData>>),
-    Map(IndexMap<MalKey, Rc<MalData>>),
+    Vector(Vec<MalData>),
+    Map(IndexMap<MalKey, MalData>),
     Sym(String),
     Str(String),
     Kwd(String),
@@ -43,9 +43,9 @@ pub enum MalVal {
 
 impl MalData {
     pub fn is_true(&self) -> bool {
-        match &self.value {
+        match *self.value {
             MalVal::Nil => false,
-            MalVal::Bool(value) => *value,
+            MalVal::Bool(value) => value,
             _ => true,
         }
     }
@@ -56,8 +56,11 @@ impl MalData {
 }
 
 impl MalVal {
-    pub fn with_loc(self, loc: Location) -> Rc<MalData> {
-        Rc::new(MalData { value: self, loc })
+    pub fn with_loc(self, loc: Location) -> MalData {
+        MalData {
+            value: Rc::new(self),
+            loc,
+        }
     }
 
     pub const LIST: &str = "list";
@@ -102,12 +105,12 @@ pub struct MalFn {
     pub is_macro: bool,
     pub outer: Env,
     pub binds: Vec<String>,
-    pub bind_rest: Option<Option<(Location, String)>>,
-    pub body: (Rc<MalData>, List),
+    pub bind_rest: Option<Option<String>>,
+    pub body: (MalData, List),
 }
 
 #[derive(Debug, Clone)]
-pub struct List(Vec<Rc<MalData>>);
+pub struct List(Vec<MalData>);
 
 impl Default for List {
     fn default() -> Self {
@@ -120,11 +123,11 @@ impl List {
         Self(Vec::new())
     }
 
-    pub fn first(&self) -> Option<&Rc<MalData>> {
+    pub fn first(&self) -> Option<&MalData> {
         self.0.last()
     }
 
-    pub fn swap_remove(&mut self, index: usize) -> Rc<MalData> {
+    pub fn swap_remove(&mut self, index: usize) -> MalData {
         self.0.swap_remove(self.0.len() - index - 1)
     }
 
@@ -134,7 +137,7 @@ impl List {
         Self(o)
     }
 
-    pub fn into_array<const N: usize>(self) -> Result<[Rc<MalData>; N], List> {
+    pub fn into_array<const N: usize>(self) -> Result<[MalData; N], List> {
         self.0.try_into().map_err(List).map(|mut arr: [_; N]| {
             arr.reverse();
             arr
@@ -149,23 +152,23 @@ impl List {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> iter::Rev<slice::Iter<'_, Rc<MalData>>> {
+    pub fn iter(&self) -> iter::Rev<slice::Iter<'_, MalData>> {
         self.0.iter().rev()
     }
 
-    pub fn pop_front(&mut self) -> Option<Rc<MalData>> {
+    pub fn pop_front(&mut self) -> Option<MalData> {
         self.0.pop()
     }
 
-    pub fn push_front(&mut self, value: Rc<MalData>) {
+    pub fn push_front(&mut self, value: MalData) {
         self.0.push(value);
     }
 }
 
 impl IntoIterator for List {
-    type Item = Rc<MalData>;
+    type Item = MalData;
 
-    type IntoIter = iter::Rev<vec::IntoIter<Rc<MalData>>>;
+    type IntoIter = iter::Rev<vec::IntoIter<MalData>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter().rev()
@@ -198,20 +201,20 @@ macro_rules! list {
 }
 
 impl List {
-    pub fn from_rev(rev: Vec<Rc<MalData>>) -> Self {
+    pub fn from_rev(rev: Vec<MalData>) -> Self {
         Self(rev)
     }
 
-    pub fn into_rev(self) -> Vec<Rc<MalData>> {
+    pub fn into_rev(self) -> Vec<MalData> {
         self.0
     }
 
-    pub fn from_vec(mut vec: Vec<Rc<MalData>>) -> Self {
+    pub fn from_vec(mut vec: Vec<MalData>) -> Self {
         vec.reverse();
         Self(vec)
     }
 
-    pub fn into_vec(mut self) -> Vec<Rc<MalData>> {
+    pub fn into_vec(mut self) -> Vec<MalData> {
         self.0.reverse();
         self.0
     }
@@ -239,7 +242,7 @@ pub struct HtmlProperty {
 #[derive(Debug, Clone)]
 pub enum HtmlText {
     Text(String),
-    Value(Rc<MalData>),
+    Value(MalData),
 }
 
 impl HtmlText {
@@ -286,7 +289,7 @@ impl fmt::Display for Html {
             for child in children {
                 match child {
                     HtmlText::Text(text) => write!(f, "{}", text.replace('@', "@@"))?,
-                    HtmlText::Value(value) => match &value.value {
+                    HtmlText::Value(value) => match value.value.as_ref() {
                         MalVal::Html(html) => write!(f, "{html}")?,
                         _ => write!(f, "@{}", value.value)?,
                     },

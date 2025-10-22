@@ -1,10 +1,7 @@
-use std::rc::Rc;
-
 use indexmap::IndexMap;
 
 use crate::{
     env::Env,
-    loc,
     reader::{self, Location},
     types::{CallContext, List, MalData, MalFn, MalKey, MalVal},
     Error, ErrorKind, MalRet,
@@ -34,20 +31,18 @@ fn std_mal(data: &mut Env) {
 }
 
 pub fn sform(data: &mut Env) {
-    data.set_special(loc!(), "let*", sform::r#let);
-    data.set_special(loc!(), "def!", sform::def);
-    data.set_special(loc!(), "do", sform::r#do);
-    data.set_special(loc!(), "if", sform::r#if);
-    data.set_special(loc!(), "fn*", sform::r#fn);
-    data.set_fn(loc!(), "macro", sform::r#macro);
+    data.set_special("let*", sform::r#let);
+    data.set_special("def!", sform::def);
+    data.set_special("do", sform::r#do);
+    data.set_special("if", sform::r#if);
+    data.set_special("fn*", sform::r#fn);
+    data.set_fn("macro", sform::r#macro);
 
-    data.set_special(loc!(), "quote", sform::quote);
-    data.set_special(loc!(), "quasiquote", sform::quasiquote);
+    data.set_special("quote", sform::quote);
+    data.set_special("quasiquote", sform::quasiquote);
 }
 
 mod sform {
-    use std::rc::Rc;
-
     use crate::{
         env::{Env, TcoRet, TcoVal},
         ns::take_atleast,
@@ -66,7 +61,7 @@ mod sform {
     pub fn quasiquote(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
         let [args] = take_exact(ctx, &loc, args)?;
 
-        let MalVal::List(args) = &args.value else {
+        let MalVal::List(args) = args.value.as_ref() else {
             return Ok(TcoVal::Val(args));
         };
 
@@ -90,7 +85,7 @@ mod sform {
         let mut new_list = List::new();
 
         for data in args.into_rev() {
-            let MalVal::List(value) = &data.value else {
+            let MalVal::List(value) = data.value.as_ref() else {
                 new_list.push_front(data);
                 continue;
             };
@@ -119,7 +114,7 @@ mod sform {
             return Err(args);
         };
 
-        if let MalVal::Sym(sym) = &first.value {
+        if let MalVal::Sym(sym) = first.value.as_ref() {
             if sym == s {
                 return Ok(args);
             } else {
@@ -150,7 +145,7 @@ mod sform {
             let key = to_sym(ctx, &key)?;
 
             let value = env.eval(ctx, value)?;
-            env.set(key, value);
+            env.set(key, value.value);
         }
 
         Ok(TcoVal::Val(env.eval(ctx, body)?))
@@ -159,13 +154,13 @@ mod sform {
     pub fn def(ctx: &CallContext, env: &mut Env, (args, loc): (List, Location)) -> TcoRet {
         let [key, value] = take_exact(ctx, &loc, args)?;
         let key = to_sym(ctx, &key)?;
-        let mut value = env.eval(ctx, value)?.as_ref().clone();
+        let mut value = env.eval(ctx, value)?.value.as_ref().clone();
 
-        if let MalVal::Fn(MalFn { name, .. }) = &mut value.value {
+        if let MalVal::Fn(MalFn { name, .. }) = &mut value {
             *name = Some(key.clone());
         }
 
-        env.set(key, Rc::new(value));
+        env.set(key, value.into());
 
         Ok(TcoVal::Val(MalVal::Nil.with_loc(loc)))
     }
@@ -201,14 +196,14 @@ mod sform {
         let ([bindings, first], rest) = take_atleast(ctx, &loc, args)?;
 
         let mut binds: Vec<String> = vec![];
-        let mut bind_rest: Option<Option<(Location, String)>> = None;
+        let mut bind_rest: Option<Option<String>> = None;
 
         for value in to_list_like(ctx, bindings)?.into_iter() {
             let loc = value.loc.clone();
             let sym = to_sym(ctx, &value)?;
 
             match &bind_rest {
-                Some(None) => bind_rest = Some(Some((loc, sym.to_string()))),
+                Some(None) => bind_rest = Some(Some(sym.to_string())),
                 Some(Some(_)) => return Err(Error::new(ErrorKind::BindsAfterRest, ctx, loc)),
                 None => {
                     if sym == "&" {
@@ -242,15 +237,15 @@ mod sform {
 }
 
 pub fn fs(data: &mut Env) {
-    data.set_fn(loc!(), "file", fs::file);
-    data.set_fn(loc!(), "load-mal", fs::load_mal);
-    data.set_fn(loc!(), "load-shtml", fs::load_shtml);
-    data.set_fn(loc!(), "read-file", fs::read_file);
-    data.set_fn(loc!(), "read-dir", fs::read_dir);
+    data.set_fn("file", fs::file);
+    data.set_fn("load-mal", fs::load_mal);
+    data.set_fn("load-shtml", fs::load_shtml);
+    data.set_fn("read-file", fs::read_file);
+    data.set_fn("read-dir", fs::read_dir);
 }
 
 mod fs {
-    use std::{fs, path::PathBuf, rc::Rc};
+    use std::{fs, path::PathBuf};
 
     use crate::{
         load,
@@ -366,7 +361,7 @@ mod fs {
     fn to_path(
         ctx: &CallContext,
         dir: &DirContext,
-        path: Rc<MalData>,
+        path: MalData,
     ) -> Result<(String, PathBuf), Error> {
         let loc = path.loc.clone();
         let rel_path = to_str(ctx, &path)?;
@@ -393,9 +388,9 @@ mod fs {
 }
 
 pub fn fmt(data: &mut Env) {
-    data.set_fn(loc!(), "prin", fmt::prin);
-    data.set_fn(loc!(), "print", fmt::print);
-    data.set_fn(loc!(), "dbg", fmt::dbg);
+    data.set_fn("prin", fmt::prin);
+    data.set_fn("print", fmt::print);
+    data.set_fn("dbg", fmt::dbg);
 }
 
 mod fmt {
@@ -422,10 +417,10 @@ mod fmt {
     pub fn prin(_ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let mut iter = args.iter();
         if let Some(value) = iter.next() {
-            print!("{}", PrettyPrint(&value.value));
+            print!("{}", PrettyPrint(value.value.as_ref()));
         }
         for value in iter {
-            print!(" {}", PrettyPrint(&value.value));
+            print!(" {}", PrettyPrint(value.value.as_ref()));
         }
         Ok(MalVal::Nil.with_loc(loc))
     }
@@ -441,7 +436,7 @@ mod fmt {
 
         print!("dbg:");
         for value in rest {
-            print!(" {}", PrettyPrint(&value.value));
+            print!(" {}", PrettyPrint(value.value.as_ref()));
         }
         println!(": {} at {}", value.value, loc);
 
@@ -450,30 +445,30 @@ mod fmt {
 }
 
 pub fn cmp(data: &mut Env) {
-    data.set_fn(loc!(), "=", cmp::eq);
-    data.set_fn(loc!(), "!=", cmp::neq);
-    data.set_fn(loc!(), "lt", cmp::lt);
-    data.set_fn(loc!(), "lt=", cmp::lte);
-    data.set_fn(loc!(), "gt", cmp::gt);
-    data.set_fn(loc!(), "gt=", cmp::gte);
+    data.set_fn("=", cmp::eq);
+    data.set_fn("!=", cmp::neq);
+    data.set_fn("lt", cmp::lt);
+    data.set_fn("lt=", cmp::lte);
+    data.set_fn("gt", cmp::gt);
+    data.set_fn("gt=", cmp::gte);
 
-    data.set_fn(loc!(), "not", cmp::not);
-    data.set_special(loc!(), "and", cmp::and);
-    data.set_special(loc!(), "or", cmp::or);
+    data.set_fn("not", cmp::not);
+    data.set_special("and", cmp::and);
+    data.set_special("or", cmp::or);
 
-    data.set_fn(loc!(), "list?", cmp::is_list);
-    data.set_fn(loc!(), "empty?", cmp::is_empty);
-    data.set_fn(loc!(), "string?", cmp::is_string);
-    data.set_fn(loc!(), "vec?", cmp::is_vec);
-    data.set_fn(loc!(), "hash-map?", cmp::is_hash_map);
-    data.set_fn(loc!(), "sym?", cmp::is_sym);
-    data.set_fn(loc!(), "fn?", cmp::is_fn);
-    data.set_fn(loc!(), "even?", cmp::is_even);
-    data.set_fn(loc!(), "odd?", cmp::is_odd);
+    data.set_fn("list?", cmp::is_list);
+    data.set_fn("empty?", cmp::is_empty);
+    data.set_fn("string?", cmp::is_string);
+    data.set_fn("vec?", cmp::is_vec);
+    data.set_fn("hash-map?", cmp::is_hash_map);
+    data.set_fn("sym?", cmp::is_sym);
+    data.set_fn("fn?", cmp::is_fn);
+    data.set_fn("even?", cmp::is_even);
+    data.set_fn("odd?", cmp::is_odd);
 }
 
 mod cmp {
-    use std::{cmp::Ordering, rc::Rc};
+    use std::cmp::Ordering;
 
     use crate::{
         env::{Env, TcoRet, TcoVal},
@@ -522,7 +517,7 @@ mod cmp {
     }
 
     pub fn eq2(fst: &MalData, snd: &MalData) -> Result<bool, Error> {
-        Ok(match (&fst.value, &snd.value) {
+        Ok(match (fst.value.as_ref(), snd.value.as_ref()) {
             (MalVal::List(fst), MalVal::List(snd)) => eq_iter(fst.iter(), snd.iter())?,
             (MalVal::Vector(fst), MalVal::Vector(snd)) => eq_iter(fst.iter(), snd.iter())?,
             (MalVal::List(fst), MalVal::Vector(snd)) => eq_iter(fst.iter(), snd.iter())?,
@@ -563,8 +558,8 @@ mod cmp {
 
     fn eq_iter<'a, T, U>(fst: T, snd: U) -> Result<bool, Error>
     where
-        T: ExactSizeIterator + Iterator<Item = &'a Rc<MalData>>,
-        U: ExactSizeIterator + Iterator<Item = &'a Rc<MalData>>,
+        T: ExactSizeIterator + Iterator<Item = &'a MalData>,
+        U: ExactSizeIterator + Iterator<Item = &'a MalData>,
     {
         if fst.len() != snd.len() {
             return Ok(false);
@@ -601,7 +596,7 @@ mod cmp {
 
     fn cmp_num(loc: Location, args: List, cond: impl Fn(Ordering) -> bool) -> MalRet {
         all_reduce(loc, args, |fst, snd| {
-            let ord = match (&fst.value, &snd.value) {
+            let ord = match (fst.value.as_ref(), snd.value.as_ref()) {
                 (MalVal::Int(fst), MalVal::Int(snd)) => fst.partial_cmp(snd),
                 (MalVal::Float(fst), MalVal::Float(snd)) => fst.partial_cmp(snd),
                 (MalVal::Float(float), MalVal::Int(int))
@@ -618,13 +613,13 @@ mod cmp {
 
     pub fn is_list(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
         all(loc, args, |value| {
-            Ok(matches!(value.value, MalVal::List(_)))
+            Ok(matches!(value.value.as_ref(), MalVal::List(_)))
         })
     }
 
     pub fn is_empty(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         all(loc, args, |value| {
-            Ok(match &value.value {
+            Ok(match value.value.as_ref() {
                 MalVal::List(list) => list.is_empty(),
                 MalVal::Vector(vec) => vec.is_empty(),
                 MalVal::Map(map) => map.is_empty(),
@@ -637,34 +632,40 @@ mod cmp {
     }
 
     pub fn is_string(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        all(loc, args, |value| Ok(matches!(value.value, MalVal::Str(_))))
+        all(loc, args, |value| {
+            Ok(matches!(value.value.as_ref(), MalVal::Str(_)))
+        })
     }
 
     pub fn is_vec(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
         all(loc, args, |value| {
-            Ok(matches!(value.value, MalVal::Vector(_)))
+            Ok(matches!(value.value.as_ref(), MalVal::Vector(_)))
         })
     }
 
     pub fn is_hash_map(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        all(loc, args, |value| Ok(matches!(value.value, MalVal::Map(_))))
+        all(loc, args, |value| {
+            Ok(matches!(value.value.as_ref(), MalVal::Map(_)))
+        })
     }
 
     pub fn is_sym(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        all(loc, args, |value| Ok(matches!(value.value, MalVal::Sym(_))))
+        all(loc, args, |value| {
+            Ok(matches!(value.value.as_ref(), MalVal::Sym(_)))
+        })
     }
 
     pub fn is_fn(_: &CallContext, (args, loc): (List, Location)) -> MalRet {
         all(loc, args, |value| {
             Ok(matches!(
-                value.value,
+                value.value.as_ref(),
                 MalVal::Fn(_) | MalVal::BuiltinFn(_, _) | MalVal::Special(_, _)
             ))
         })
     }
 
     pub fn is_even(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        all(loc, args, |value| match &value.value {
+        all(loc, args, |value| match value.value.as_ref() {
             MalVal::Int(x) => Ok(x % 2 == 0),
             _ => {
                 let kind = ErrorKind::InvalidOperation1("even?", value.type_name());
@@ -674,7 +675,7 @@ mod cmp {
     }
 
     pub fn is_odd(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
-        all(loc, args, |value| match &value.value {
+        all(loc, args, |value| match value.value.as_ref() {
             MalVal::Int(x) => Ok(x % 2 == 1),
             _ => {
                 let kind = ErrorKind::InvalidOperation1("odd?", value.type_name());
@@ -685,10 +686,10 @@ mod cmp {
 }
 
 pub fn env(data: &mut Env) {
-    data.set_fn(loc!(), "new-env", env::new_env);
-    data.set_fn(loc!(), "env/set", env::set);
-    data.set_fn(loc!(), "env/sets", env::sets);
-    data.set_fn(loc!(), "env/get", env::get);
+    data.set_fn("new-env", env::new_env);
+    data.set_fn("env/set", env::set);
+    data.set_fn("env/sets", env::sets);
+    data.set_fn("env/get", env::get);
 }
 
 mod env {
@@ -712,7 +713,7 @@ mod env {
         let mut env = to_env(ctx, &env)?.clone();
         let key = to_sym(ctx, &key)?.clone();
 
-        env.set(key, value);
+        env.set(key, value.value);
 
         Ok(MalVal::Env(env).with_loc(loc))
     }
@@ -731,7 +732,7 @@ mod env {
                 ));
             };
 
-            env.set(key.clone(), value.clone());
+            env.set(key.clone(), Rc::clone(&value.value));
         }
 
         Ok(MalVal::Env(env).with_loc(loc))
@@ -743,38 +744,38 @@ mod env {
         let key = to_sym(ctx, &key)?;
 
         let value = env.get(ctx, &loc, key)?;
-        Ok(Rc::clone(value))
+        Ok(value.clone())
     }
 }
 
 pub fn ds(data: &mut Env) {
-    data.set_fn(loc!(), "hash-map", ds::hash_map);
-    data.set_fn(loc!(), "list", ds::list);
-    data.set_fn(loc!(), "vec", ds::vec);
-    data.set_fn(loc!(), "sym", ds::sym);
+    data.set_fn("hash-map", ds::hash_map);
+    data.set_fn("list", ds::list);
+    data.set_fn("vec", ds::vec);
+    data.set_fn("sym", ds::sym);
 
-    data.set_fn(loc!(), "cons", ds::cons);
-    data.set_fn(loc!(), "concat", ds::concat);
+    data.set_fn("cons", ds::cons);
+    data.set_fn("concat", ds::concat);
 
-    data.set_fn(loc!(), "fst", ds::fst);
-    data.set_fn(loc!(), "snd", ds::snd);
-    data.set_fn(loc!(), "rest", ds::rest);
-    data.set_fn(loc!(), "nth", ds::nth);
+    data.set_fn("fst", ds::fst);
+    data.set_fn("snd", ds::snd);
+    data.set_fn("rest", ds::rest);
+    data.set_fn("nth", ds::nth);
 
-    data.set_fn(loc!(), "map/take", ds::map_take);
+    data.set_fn("map/take", ds::map_take);
 
-    data.set_fn(loc!(), "len", ds::len);
+    data.set_fn("len", ds::len);
 }
 
 pub fn apply_map(
-    map: &IndexMap<MalKey, Rc<MalData>>,
+    map: &IndexMap<MalKey, MalData>,
     ctx: &CallContext,
     (args, loc): (List, Location),
 ) -> MalRet {
     let [value] = take_exact(ctx, &loc, args)?;
     let key = to_key(ctx, value)?;
     match map.get(&key) {
-        Some(value) => Ok(Rc::clone(value)),
+        Some(value) => Ok(value.clone()),
         None => Err(Error::new(
             ErrorKind::MapKeyNotFound(Box::new(key.into_value())),
             ctx,
@@ -800,7 +801,7 @@ mod ds {
 
         let mut value = to_list_like(ctx, value)?;
 
-        let MalVal::Int(index) = index.value else {
+        let MalVal::Int(index) = *index.value else {
             return Err(Error::new(
                 ErrorKind::UnexpectedType(MalVal::INT, index.type_name()),
                 ctx,
@@ -896,7 +897,7 @@ mod ds {
 
     pub fn sym(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
-        let str = match &value.value {
+        let str = match value.value.as_ref() {
             MalVal::Sym(value) | MalVal::Str(value) | MalVal::Kwd(value) => value,
             _ => {
                 return Err(Error::new(
@@ -928,7 +929,7 @@ mod ds {
     pub fn len(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         let [value] = take_exact(ctx, &loc, args)?;
 
-        Ok(MalVal::Int(match &value.value {
+        Ok(MalVal::Int(match value.value.as_ref() {
             MalVal::List(list) => list.len(),
             MalVal::Vector(vec) => vec.len(),
             MalVal::Map(map) => map.len(),
@@ -946,11 +947,11 @@ mod ds {
 }
 
 pub fn string(data: &mut Env) {
-    data.set_fn(loc!(), "str", string::str);
-    data.set_fn(loc!(), "string/rsplit", string::rsplit_once);
-    data.set_fn(loc!(), "string/split", string::split_once);
-    data.set_fn(loc!(), "string/ends-with", string::ends_with);
-    data.set_fn(loc!(), "string/starts-with", string::starts_with);
+    data.set_fn("str", string::str);
+    data.set_fn("string/rsplit", string::rsplit_once);
+    data.set_fn("string/split", string::split_once);
+    data.set_fn("string/ends-with", string::ends_with);
+    data.set_fn("string/starts-with", string::starts_with);
 }
 
 mod string {
@@ -969,7 +970,7 @@ mod string {
         let mut s = String::new();
 
         for value in args {
-            match &value.value {
+            match value.value.as_ref() {
                 MalVal::Sym(value) => write!(s, "{value}"),
                 MalVal::Str(value) => write!(s, "{value}"),
                 MalVal::Int(value) => write!(s, "{value}"),
@@ -1028,15 +1029,13 @@ mod string {
 }
 
 pub fn math(data: &mut Env) {
-    data.set_fn(loc!(), "+", math::add);
-    data.set_fn(loc!(), "-", math::sub);
-    data.set_fn(loc!(), "*", math::mul);
-    data.set_fn(loc!(), "/", math::div);
+    data.set_fn("+", math::add);
+    data.set_fn("-", math::sub);
+    data.set_fn("*", math::mul);
+    data.set_fn("/", math::div);
 }
 
 mod math {
-    use std::rc::Rc;
-
     use crate::{
         reader::Location,
         types::{CallContext, List, MalData, MalVal},
@@ -1049,8 +1048,8 @@ mod math {
         reduce(ctx, loc, args, add2)
     }
 
-    fn add2(ctx: &CallContext, fst: Rc<MalData>, snd: Rc<MalData>) -> Result<MalVal, Error> {
-        match (&fst.value, &snd.value) {
+    fn add2(ctx: &CallContext, fst: MalData, snd: MalData) -> Result<MalVal, Error> {
+        match (fst.value.as_ref(), snd.value.as_ref()) {
             (MalVal::Int(int), MalVal::Float(float)) | (MalVal::Float(float), MalVal::Int(int)) => {
                 Ok(MalVal::Float(float + (*int as f64)))
             }
@@ -1083,7 +1082,7 @@ mod math {
 
     pub fn sub(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         reduce(ctx, loc, args, |ctx, fst, snd| {
-            match (&fst.value, &snd.value) {
+            match (fst.value.as_ref(), snd.value.as_ref()) {
                 (MalVal::Int(int), MalVal::Float(float))
                 | (MalVal::Float(float), MalVal::Int(int)) => {
                     Ok(MalVal::Float(float - (*int as f64)))
@@ -1097,7 +1096,7 @@ mod math {
 
     pub fn mul(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         reduce(ctx, loc, args, |ctx, fst, snd| {
-            match (&fst.value, &snd.value) {
+            match (fst.value.as_ref(), snd.value.as_ref()) {
                 (MalVal::Int(int), MalVal::Float(float))
                 | (MalVal::Float(float), MalVal::Int(int)) => {
                     Ok(MalVal::Float(float * (*int as f64)))
@@ -1111,7 +1110,7 @@ mod math {
 
     pub fn div(ctx: &CallContext, (args, loc): (List, Location)) -> MalRet {
         reduce(ctx, loc, args, |ctx, fst, snd| {
-            match (&fst.value, &snd.value) {
+            match (fst.value.as_ref(), snd.value.as_ref()) {
                 (MalVal::Int(int), MalVal::Float(float))
                 | (MalVal::Float(float), MalVal::Int(int)) => {
                     Ok(MalVal::Float(float / (*int as f64)))
@@ -1141,8 +1140,8 @@ fn op_error(
     )
 }
 
-fn to_fn<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e MalFn, Error> {
-    let MalVal::Fn(f) = &value.value else {
+fn to_fn<'e>(ctx: &CallContext, value: &'e MalData) -> Result<&'e MalFn, Error> {
+    let MalVal::Fn(f) = value.value.as_ref() else {
         return Err(Error::new(
             ErrorKind::UnexpectedType(MalVal::FN, value.type_name()),
             ctx,
@@ -1155,9 +1154,9 @@ fn to_fn<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e MalFn, Err
 
 fn to_hash_map<'e>(
     ctx: &CallContext,
-    value: &'e Rc<MalData>,
-) -> Result<&'e IndexMap<MalKey, Rc<MalData>>, Error> {
-    let MalVal::Map(map) = &value.value else {
+    value: &'e MalData,
+) -> Result<&'e IndexMap<MalKey, MalData>, Error> {
+    let MalVal::Map(map) = value.value.as_ref() else {
         return Err(Error::new(
             ErrorKind::UnexpectedType(MalVal::HASH_MAP, value.type_name()),
             ctx,
@@ -1168,8 +1167,8 @@ fn to_hash_map<'e>(
     Ok(map)
 }
 
-fn to_env<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e Env, Error> {
-    let MalVal::Env(env) = &value.value else {
+fn to_env<'e>(ctx: &CallContext, value: &'e MalData) -> Result<&'e Env, Error> {
+    let MalVal::Env(env) = value.value.as_ref() else {
         return Err(Error::new(
             ErrorKind::UnexpectedType(MalVal::ENV, value.type_name()),
             ctx,
@@ -1180,8 +1179,8 @@ fn to_env<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e Env, Erro
     Ok(env)
 }
 
-fn to_key(ctx: &CallContext, value: Rc<MalData>) -> Result<MalKey, Error> {
-    match MalKey::from_value(&value.value) {
+fn to_key(ctx: &CallContext, value: MalData) -> Result<MalKey, Error> {
+    match MalKey::from_value(value.value.as_ref()) {
         Some(key) => Ok(key),
         None => Err(Error::new(
             ErrorKind::InvalidMapKey(value.type_name()),
@@ -1191,8 +1190,8 @@ fn to_key(ctx: &CallContext, value: Rc<MalData>) -> Result<MalKey, Error> {
     }
 }
 
-fn to_str<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, Error> {
-    let MalVal::Str(key) = &value.value else {
+fn to_str<'e>(ctx: &CallContext, value: &'e MalData) -> Result<&'e String, Error> {
+    let MalVal::Str(key) = value.value.as_ref() else {
         return Err(Error::new(
             ErrorKind::UnexpectedType(MalVal::STR, value.type_name()),
             ctx,
@@ -1203,8 +1202,8 @@ fn to_str<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, E
     Ok(key)
 }
 
-fn to_sym<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, Error> {
-    let MalVal::Sym(key) = &value.value else {
+fn to_sym<'e>(ctx: &CallContext, value: &'e MalData) -> Result<&'e String, Error> {
+    let MalVal::Sym(key) = value.value.as_ref() else {
         return Err(Error::new(
             ErrorKind::UnexpectedType(MalVal::SYM, value.type_name()),
             ctx,
@@ -1215,8 +1214,8 @@ fn to_sym<'e>(ctx: &CallContext, value: &'e Rc<MalData>) -> Result<&'e String, E
     Ok(key)
 }
 
-fn to_list_like(ctx: &CallContext, value: Rc<MalData>) -> Result<ListLike, Error> {
-    match &value.value {
+fn to_list_like(ctx: &CallContext, value: MalData) -> Result<ListLike, Error> {
+    match value.value.as_ref() {
         MalVal::List(list) => Ok(ListLike::List(list.clone())),
         MalVal::Vector(vec) => Ok(ListLike::Vector(vec.clone())),
         _ => Err(Error::new(
@@ -1227,7 +1226,7 @@ fn to_list_like(ctx: &CallContext, value: Rc<MalData>) -> Result<ListLike, Error
     }
 }
 
-fn all(loc: Location, args: List, cond: impl Fn(Rc<MalData>) -> Result<bool, Error>) -> MalRet {
+fn all(loc: Location, args: List, cond: impl Fn(MalData) -> Result<bool, Error>) -> MalRet {
     for value in args {
         if !cond(value)? {
             return Ok(MalVal::Bool(false).with_loc(loc));
@@ -1261,7 +1260,7 @@ fn reduce(
     ctx: &CallContext,
     loc: Location,
     args: List,
-    join: impl Fn(&CallContext, Rc<MalData>, Rc<MalData>) -> Result<MalVal, Error>,
+    join: impl Fn(&CallContext, MalData, MalData) -> Result<MalVal, Error>,
 ) -> MalRet {
     let mut iter = args.into_iter();
     let Some(mut accum) = iter.next() else {
@@ -1277,7 +1276,7 @@ fn reduce(
 
 pub enum ListLike {
     List(List),
-    Vector(Vec<Rc<MalData>>),
+    Vector(Vec<MalData>),
 }
 
 impl ListLike {
@@ -1302,7 +1301,7 @@ impl ListLike {
         }
     }
 
-    pub fn swap_remove(&mut self, index: usize) -> Rc<MalData> {
+    pub fn swap_remove(&mut self, index: usize) -> MalData {
         match self {
             ListLike::List(list) => list.swap_remove(index),
             ListLike::Vector(vec) => vec.swap_remove(index),
@@ -1311,7 +1310,7 @@ impl ListLike {
 }
 
 impl IntoIterator for ListLike {
-    type Item = Rc<MalData>;
+    type Item = MalData;
     type IntoIter = ListLikeIter;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -1324,11 +1323,11 @@ impl IntoIterator for ListLike {
 
 pub enum ListLikeIter {
     List(<List as IntoIterator>::IntoIter),
-    Vector(<Vec<Rc<MalData>> as IntoIterator>::IntoIter),
+    Vector(<Vec<MalData> as IntoIterator>::IntoIter),
 }
 
 impl Iterator for ListLikeIter {
-    type Item = Rc<MalData>;
+    type Item = MalData;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -1351,7 +1350,7 @@ fn take_atleast<const N: usize>(
     ctx: &CallContext,
     loc: &Location,
     mut list: List,
-) -> Result<([Rc<MalData>; N], List), Error> {
+) -> Result<([MalData; N], List), Error> {
     if list.len() < N {
         return Err(Error::new(
             ErrorKind::AtleastArityMismatch(N, list.len()),
@@ -1373,7 +1372,7 @@ fn take_exact<const N: usize>(
     ctx: &CallContext,
     loc: &Location,
     args: List,
-) -> Result<[Rc<MalData>; N], Error> {
+) -> Result<[MalData; N], Error> {
     match args.into_array::<N>() {
         Ok(arr) => Ok(arr),
         Err(list) => Err(Error::new(

@@ -13,7 +13,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Env {
     name: String,
-    data: HashMap<String, Rc<MalData>>,
+    data: HashMap<String, Rc<MalVal>>,
     outer: Option<Rc<Env>>,
 }
 
@@ -49,50 +49,34 @@ impl Env {
         }
     }
 
-    pub fn set(&mut self, key: impl Into<String>, value: Rc<MalData>) {
+    pub fn set(&mut self, key: impl Into<String>, value: Rc<MalVal>) {
         self.data.insert(key.into(), value);
     }
 
     pub fn set_fn(
         &mut self,
-        loc: Location,
         key: impl Into<String>,
         value: fn(&CallContext, (List, Location)) -> MalRet,
     ) {
         let key = key.into();
-        self.set(
-            key.clone(),
-            Rc::new(MalData {
-                value: MalVal::BuiltinFn(key, value),
-                loc,
-            }),
-        )
+        self.set(key.clone(), MalVal::BuiltinFn(key, value).into())
     }
 
     pub fn set_special(
         &mut self,
-        loc: Location,
         key: impl Into<String>,
         value: fn(&CallContext, &mut Env, (List, Location)) -> TcoRet,
     ) {
         let key = key.into();
-        self.set(
-            key.clone(),
-            Rc::new(MalData {
-                value: MalVal::Special(key, value),
-                loc,
-            }),
-        );
+        self.set(key.clone(), MalVal::Special(key, value).into());
     }
 
-    pub fn get(
-        &self,
-        ctx: &CallContext,
-        loc: &Location,
-        key: &String,
-    ) -> Result<&Rc<MalData>, Error> {
+    pub fn get(&self, ctx: &CallContext, loc: &Location, key: &String) -> Result<MalData, Error> {
         match self.data.get(key) {
-            Some(value) => Ok(value),
+            Some(value) => Ok(MalData {
+                value: Rc::clone(value),
+                loc: loc.clone(),
+            }),
             None => match &self.outer {
                 Some(env) => env.get(ctx, loc, key),
                 None => {
@@ -120,9 +104,9 @@ impl Env {
         }
     }
 
-    pub fn eval(&mut self, ctx: &CallContext, mut ast: Rc<MalData>) -> MalRet {
+    pub fn eval(&mut self, ctx: &CallContext, mut ast: MalData) -> MalRet {
         loop {
-            match &ast.value {
+            match ast.value.as_ref() {
                 MalVal::List(list) => match self.eval_list(ctx, (list, &ast.loc))? {
                     TcoVal::Val(val) => return Ok(val),
                     TcoVal::Unevaluated(val) => ast = val,
@@ -135,7 +119,7 @@ impl Env {
                 MalVal::Map(map) => {
                     let mut ret = IndexMap::with_capacity(map.len());
                     for (key, value) in map.into_iter() {
-                        ret.insert(key.clone(), self.eval(ctx, Rc::clone(value))?);
+                        ret.insert(key.clone(), self.eval(ctx, value.clone())?);
                     }
                     return Ok(MalVal::Map(ret).with_loc(ast.loc.clone()));
                 }
@@ -154,7 +138,7 @@ impl Env {
                             match child {
                                 HtmlText::Text(_) => {}
                                 HtmlText::Value(value) => {
-                                    *value = self.eval(ctx, Rc::clone(value))?;
+                                    *value = self.eval(ctx, value.clone())?;
                                 }
                             }
                         }
@@ -169,7 +153,7 @@ impl Env {
 
                     return Ok(MalVal::Html(html).with_loc(ast.loc.clone()));
                 }
-                MalVal::Sym(sym) => return self.get(ctx, &ast.loc, sym).cloned(),
+                MalVal::Sym(sym) => return self.get(ctx, &ast.loc, sym),
                 MalVal::Str(_)
                 | MalVal::Nil
                 | MalVal::Env(_)
@@ -191,14 +175,10 @@ impl Env {
         }
     }
 
-    fn eval_in(
-        &mut self,
-        ctx: &CallContext,
-        vals: &Vec<Rc<MalData>>,
-    ) -> Result<Vec<Rc<MalData>>, Error> {
+    fn eval_in(&mut self, ctx: &CallContext, vals: &Vec<MalData>) -> Result<Vec<MalData>, Error> {
         let mut ret = Vec::with_capacity(vals.len());
         for value in vals {
-            ret.push(self.eval(ctx, Rc::clone(value))?);
+            ret.push(self.eval(ctx, value.clone())?);
         }
         Ok(ret)
     }
@@ -214,7 +194,7 @@ impl Env {
 
         let op = self.eval(ctx, op)?;
 
-        match &op.value {
+        match op.value.as_ref() {
             MalVal::BuiltinFn(name, f) => f(
                 &ctx.new_frame((name.to_string(), loc.clone())),
                 (
@@ -250,7 +230,7 @@ impl Env {
 
                 let mut env = Env::inner(dbg_name, outer);
                 if let Some(name) = &name {
-                    env.set(name, Rc::clone(&op));
+                    env.set(name, Rc::clone(&op.value));
                 }
                 let bindings = binds.iter();
                 let mut vals = vals.iter().cloned();
@@ -261,7 +241,7 @@ impl Env {
                     } else {
                         self.eval(ctx, value)?
                     };
-                    env.set(key, value)
+                    env.set(key, value.value)
                 }
 
                 {
@@ -276,12 +256,12 @@ impl Env {
                         ls.push(value)
                     }
 
-                    if let Some((loc, key)) = bind_rest.cloned() {
-                        env.set(key, MalVal::List(List::from_vec(ls)).with_loc(loc))
+                    if let Some(key) = bind_rest.cloned() {
+                        env.set(key, MalVal::List(List::from_vec(ls)).into())
                     }
                 }
 
-                let mut last = Rc::clone(&body.0);
+                let mut last = body.0.clone();
 
                 for value in body.1.iter().cloned() {
                     env.eval(ctx, last)?;
@@ -350,7 +330,7 @@ impl Env {
             if let Some(value) = &prop.value {
                 if value.len() == 1 {
                     if let HtmlText::Value(value) = &value[0] {
-                        properties.insert(key, Rc::clone(value));
+                        properties.insert(key, value.clone());
                         continue;
                     }
                 }
@@ -400,7 +380,7 @@ impl Env {
         for text in &mut *texts {
             match text {
                 HtmlText::Text(_) => {}
-                HtmlText::Value(value) => *value = self.eval(ctx, Rc::clone(value))?,
+                HtmlText::Value(value) => *value = self.eval(ctx, value.clone())?,
             }
         }
         Ok(())
@@ -410,6 +390,6 @@ impl Env {
 pub type TcoRet = Result<TcoVal, Error>;
 
 pub enum TcoVal {
-    Val(Rc<MalData>),
-    Unevaluated(Rc<MalData>),
+    Val(MalData),
+    Unevaluated(MalData),
 }
