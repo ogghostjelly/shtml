@@ -103,6 +103,6 @@ cargo run -- help         # Display help text
 --- vvv ---
 
 <main>
-    <script> alert("World") </script>
+    <script> alert("Hello, World") </script>
 </main>
 ```
