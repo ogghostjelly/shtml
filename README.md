@@ -78,14 +78,8 @@ cargo run -- help         # Display help text
 ```html
 <main>
     @(defn! x@say
-        [attrs children]
-        ; get the name of the person from attributes
-        (def! name (attrs 'name))
-
-        ; join the list of html elements into a string
-        (def! children (join children " "))
-
-        (str "\"" children  "\"" " said " name))
+        [p text]
+        <p>"@text" said @(p 'name)</p>)
 
     <x@say name="Bob">What's up</x@say>
 </main>
@@ -93,7 +87,7 @@ cargo run -- help         # Display help text
 --- vvv ---
 
 <main>
-    "What's up" said Bob
+    <p>"What's up" said Bob</p>
 </main>
 ```
 

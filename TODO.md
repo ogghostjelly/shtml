@@ -2,3 +2,4 @@
 - [ ] Isolate css and javascript when including shtml, since currently all functions and names get chucked into the global namespace!
 - [ ] A .shtml file should be able to expand to multiple files, maybe by returning a map?
 - [ ] Cyclic references in (include) causes a stack-overflow
+- [ ] Allow using empty tags in shtml, like `<>Some html code</>`
