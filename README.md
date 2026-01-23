@@ -3,6 +3,8 @@
 HTML at Compile-time
 
 > [!NOTE]
+> I am planning to rebrand SHTML because it conflicts with the name of SSI `.shtml` files.
+> 
 > This project is still in active (albeit slow) development so expect breaking changes.
 > The documentation isn't great either but it's something I'll be working on.
 > In the meantime feel free to contribute!

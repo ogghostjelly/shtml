@@ -1,5 +1,15 @@
-- [ ] Errors as values would be interesting, they would work just like nil but instead contain extra data about their origin and display that data when it crashes
-- [ ] Isolate css and javascript when including shtml, since currently all functions and names get chucked into the global namespace!
-- [ ] A .shtml file should be able to expand to multiple files, maybe by returning a map?
+# Issues
+
 - [ ] Cyclic references in (include) causes a stack-overflow
 - [ ] Allow using empty tags in shtml, like `<>Some html code</>`
+- [ ] Utilities for manipulating HTML like `(html/children <elem></elem>)` etc.
+- [ ] `<br />` causes a parse error
+
+# Workshopping Ideas
+
+- [ ] Errors as values would be interesting, they would work just like nil but instead contain extra data about their origin and display that data when it crashes
+- [ ] A .shtml file should be able to expand to multiple files, maybe by returning a map?
+
+# Big Ideas
+
+- [ ] Isolate css and javascript when including shtml, since currently all functions and names get chucked into the global namespace!
